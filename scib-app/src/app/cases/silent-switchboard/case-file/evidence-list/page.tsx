@@ -1,5 +1,6 @@
 ﻿﻿import Image from "next/image";
 import Link from "next/link";
+import CaseNavLinks from "@/components/CaseNavLinks";
 
 function Tag({ children }: { children: React.ReactNode }) {
   return (
@@ -46,9 +47,7 @@ export default function Page() {
             </div>
           </div>
 
-          <Link href="/cases/silent-switchboard" className="text-sm text-slate-300 hover:text-white">
-            Back to Case
-          </Link>
+          <CaseNavLinks caseHref="/cases/silent-switchboard" />
         </header>
 
         <section className="space-y-4">
@@ -185,6 +184,12 @@ export default function Page() {
               className="rounded-xl border border-slate-700 hover:bg-slate-900 transition px-4 py-3 font-medium text-center"
             >
               Back to Case
+            </Link>
+            <Link
+              href="/"
+              className="rounded-xl border border-slate-700 hover:bg-slate-900 transition px-4 py-3 font-medium text-center"
+            >
+              Home
             </Link>
           </div>
         </section>
