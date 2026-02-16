@@ -1,5 +1,6 @@
 ﻿import Image from "next/image";
 import Link from "next/link";
+import CaseNavLinks from "@/components/CaseNavLinks";
 
 export default function Page() {
   return (
@@ -15,9 +16,7 @@ export default function Page() {
             </div>
           </div>
 
-          <Link href="/cases/silent-switchboard" className="text-sm text-slate-300 hover:text-white">
-            Back to Case
-          </Link>
+          <CaseNavLinks caseHref="/cases/silent-switchboard" contextHref="/cases/silent-switchboard" contextLabel="Back to Case" />
         </header>
 
         <section className="rounded-2xl border border-slate-800 bg-slate-900/30 p-6 space-y-4">
@@ -54,3 +53,4 @@ export default function Page() {
     </main>
   );
 }
+
