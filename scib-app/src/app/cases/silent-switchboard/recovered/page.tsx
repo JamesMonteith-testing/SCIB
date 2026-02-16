@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import CaseNavLinks from "@/components/CaseNavLinks";
 import { useEffect, useMemo, useState } from "react";
 
 type RecKey = "REC-01" | "REC-02" | "REC-03" | "REC-04";
@@ -185,9 +186,7 @@ export default function Page() {
             </div>
           </div>
 
-          <Link href="/cases/silent-switchboard" className="text-sm text-slate-300 hover:text-white">
-            Back to Case
-          </Link>
+          <CaseNavLinks caseHref="/cases/silent-switchboard" contextHref="/cases/silent-switchboard" contextLabel="Back to Case" />
         </header>
 
         <section className="rounded-2xl border border-slate-800 bg-slate-900/30 p-6 space-y-3">
@@ -260,3 +259,4 @@ export default function Page() {
     </main>
   );
 }
+
