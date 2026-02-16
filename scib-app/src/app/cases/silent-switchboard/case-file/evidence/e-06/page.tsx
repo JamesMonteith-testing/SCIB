@@ -1,5 +1,6 @@
 ﻿﻿import Image from "next/image";
 import Link from "next/link";
+import CaseNavLinks from "@/components/CaseNavLinks";
 
 function Tag({ children }: { children: React.ReactNode }) {
   return (
@@ -38,12 +39,7 @@ export default function Page() {
             </div>
           </div>
 
-          <Link
-            href="/cases/silent-switchboard/case-file/evidence-list"
-            className="rounded-xl border border-slate-700 hover:bg-slate-900 transition px-4 py-2 text-sm font-medium"
-          >
-            Back to Evidence List
-          </Link>
+          <CaseNavLinks caseHref="/cases/silent-switchboard" contextHref="/cases/silent-switchboard/case-file/evidence-list" contextLabel="Back to Evidence List" />
         </header>
 
         <section className="space-y-4">
@@ -97,15 +93,11 @@ export default function Page() {
           </Panel>
 
           <div className="flex flex-col sm:flex-row gap-3 pt-2">
-            <Link
-              href="/cases/silent-switchboard/case-file/evidence-list"
-              className="rounded-xl border border-slate-700 hover:bg-slate-900 transition px-4 py-3 font-medium text-center"
-            >
-              Back to Evidence List
-            </Link>
+            <CaseNavLinks caseHref="/cases/silent-switchboard" contextHref="/cases/silent-switchboard/case-file/evidence-list" contextLabel="Back to Evidence List" />
           </div>
         </section>
       </div>
     </main>
   );
 }
+
