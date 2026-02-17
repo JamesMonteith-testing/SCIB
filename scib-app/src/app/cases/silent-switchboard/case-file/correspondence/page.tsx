@@ -1,0 +1,128 @@
+﻿import Image from "next/image";
+import Link from "next/link";
+import CaseNavLinks from "@/components/CaseNavLinks";
+
+function EmailBlock({
+  from,
+  to,
+  date,
+  subject,
+  children,
+}: {
+  from: string;
+  to: string;
+  date: string;
+  subject: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-5 space-y-3">
+      <div className="text-xs text-slate-400">
+        FROM: {from}
+      </div>
+      <div className="text-xs text-slate-400">
+        TO: {to}
+      </div>
+      <div className="text-xs text-slate-400">
+        DATE: {date}
+      </div>
+      <div className="text-sm font-semibold text-slate-200">
+        SUBJECT: {subject}
+      </div>
+      <div className="text-sm text-slate-300 leading-relaxed">
+        {children}
+      </div>
+    </div>
+  );
+}
+
+export default function Page() {
+  return (
+    <main className="min-h-screen bg-slate-950 text-slate-100 p-6">
+      <div className="mx-auto w-full max-w-3xl">
+        <header className="flex items-center justify-between gap-4 py-4">
+          <div className="flex items-center gap-4">
+            <Image src="/brand/scib-badge.png" alt="SCIB Badge" width={48} height={48} priority />
+            <div>
+              <div className="text-xs text-slate-400">SCIB Case File</div>
+              <h1 className="text-xl font-semibold">Internal Correspondence (Extract)</h1>
+              <p className="text-sm text-slate-300">
+                West Harrow Exchange — March 1991
+              </p>
+            </div>
+          </div>
+
+          <CaseNavLinks
+            caseHref="/cases/silent-switchboard"
+            contextHref="/cases/silent-switchboard/case-file/evidence-list"
+            contextLabel="Back to Evidence List"
+          />
+        </header>
+
+        <section className="space-y-6">
+
+          <EmailBlock
+            from="ops.supervisor@whx-exchange.local"
+            to="mkells@whx-exchange.local"
+            date="05 MAR 1991 — 03:42"
+            subject="Access Log Clarification"
+          >
+            Martin, <br /><br />
+            The overnight console printed a partial access sheet again. It is stamped
+            <span className="font-mono"> WHX/OPS </span> at the header. <br /><br />
+            I need the appended internal reference pulled from the footer before shift
+            change. I believe it reads something like
+            <span className="font-mono"> 1991-022-03 </span> but confirm before filing.
+            <br /><br />
+            — D.
+          </EmailBlock>
+
+          <EmailBlock
+            from="mkells@whx-exchange.local"
+            to="ops.supervisor@whx-exchange.local"
+            date="05 MAR 1991 — 03:58"
+            subject="Re: Access Log Clarification"
+          >
+            Confirmed. The footer index is
+            <span className="font-mono"> 1991-022-03 </span>. <br /><br />
+            Also — someone left a note in the engineer book.
+            Exact wording:
+            <span className="font-mono"> DON’T TRUST THE SWITCHBOARD </span>.
+            <br /><br />
+            I have not logged it formally yet.
+            <br /><br />
+            — M.
+          </EmailBlock>
+
+          <EmailBlock
+            from="facilities@whx-exchange.local"
+            to="ops.supervisor@whx-exchange.local"
+            date="05 MAR 1991 — 04:11"
+            subject="Key Cabinet"
+          >
+            The master key cabinet was not inventoried at 03:00 as scheduled.
+            <br /><br />
+            I will reconcile against the sheet in the morning.
+            <br /><br />
+            — Facilities
+          </EmailBlock>
+
+          <div className="pt-6 text-xs text-slate-500">
+            Note: References contained in correspondence may be required to retrieve
+            supplementary materials via the Recovery Terminal.
+          </div>
+
+        </section>
+
+        <div className="pt-8">
+          <Link
+            href="/cases/silent-switchboard"
+            className="rounded-xl border border-slate-700 hover:bg-slate-900 transition px-4 py-3 font-medium text-center inline-block"
+          >
+            Back to Case
+          </Link>
+        </div>
+      </div>
+    </main>
+  );
+}

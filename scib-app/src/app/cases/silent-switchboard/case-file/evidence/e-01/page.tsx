@@ -24,6 +24,7 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
 
 const PDF_SRC = "/evidence/SCIB-CC-1991-022/E-01/E-01_Evidence_Sheet.pdf";
 const PHOTO_SRC = "/evidence/SCIB-CC-1991-022/E-01/E-01_Photo_EvidenceBag.png";
+const PERSONAL_PHOTO_SRC = "/evidence/SCIB-CC-1991-022/E-01/hettie-birthday-party.png";
 
 export default function Page() {
   return (
@@ -39,7 +40,11 @@ export default function Page() {
             </div>
           </div>
 
-          <CaseNavLinks caseHref="/cases/silent-switchboard" contextHref="/cases/silent-switchboard/case-file/evidence-list" contextLabel="Back to Evidence List" />
+          <CaseNavLinks
+            caseHref="/cases/silent-switchboard"
+            contextHref="/cases/silent-switchboard/case-file/evidence-list"
+            contextLabel="Back to Evidence List"
+          />
         </header>
 
         <section className="space-y-4">
@@ -91,14 +96,34 @@ export default function Page() {
             <div className="text-xs text-slate-500">Exhibit photo: bagged lanyard + access card recovered from Main Control Room.</div>
           </Panel>
 
+          <Panel title="Personal Effects Attachment">
+            <div className="rounded-xl border border-slate-800 bg-slate-950/30 overflow-hidden">
+              <Image
+                src={PERSONAL_PHOTO_SRC}
+                alt="Recovered personal photograph (locker contents)"
+                width={1400}
+                height={900}
+                className="w-full h-auto"
+              />
+            </div>
+
+            <div className="pt-2 text-xs text-slate-500 space-y-1">
+              <div>Photograph recovered from MKELLS’ locker.</div>
+              <div>Subject: Hettie (Staffordshire Bull Terrier).</div>
+              <div>Image depicts 1st birthday celebration.</div>
+              <div>Dog aged 2 at time of recovery.</div>
+            </div>
+          </Panel>
+
           <div className="flex flex-col sm:flex-row gap-3 pt-2">
-            <CaseNavLinks caseHref="/cases/silent-switchboard" contextHref="/cases/silent-switchboard/case-file/evidence-list" contextLabel="Back to Evidence List" />
+            <CaseNavLinks
+              caseHref="/cases/silent-switchboard"
+              contextHref="/cases/silent-switchboard/case-file/evidence-list"
+              contextLabel="Back to Evidence List"
+            />
           </div>
         </section>
       </div>
     </main>
   );
 }
-
-
-

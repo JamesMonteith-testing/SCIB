@@ -1,5 +1,8 @@
-﻿import Image from "next/image";
+﻿"use client";
+
+import Image from "next/image";
 import Link from "next/link";
+import { useEffect, useState } from "react";
 import CaseNavLinks from "@/components/CaseNavLinks";
 
 function Tag({ children }: { children: React.ReactNode }) {
@@ -25,7 +28,33 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
 const PDF_SRC = "/evidence/SCIB-CC-1991-022/E-03/E-03_Evidence_Sheet.pdf";
 const PHOTO_SRC = "/evidence/SCIB-CC-1991-022/E-03/E-03_Photo_EvidenceBag.png";
 
+const UNLOCK_STORE_KEY = "scib_case01_unlocked_evidence_v1";
+
+function isUnlocked(id: string) {
+  try {
+    const raw = localStorage.getItem(UNLOCK_STORE_KEY);
+    const base = new Set(["E-01", "E-02"]);
+    if (!raw) return base.has(id);
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) parsed.forEach((x) => typeof x === "string" && base.add(x.toUpperCase()));
+    return base.has(id);
+  } catch {
+    return id === "E-01" || id === "E-02";
+  }
+}
+
 export default function Page() {
+  const [ok, setOk] = useState(false);
+
+  useEffect(() => {
+    setOk(isUnlocked("E-03"));
+    function onStorage(e: StorageEvent) {
+      if (e.key === UNLOCK_STORE_KEY) setOk(isUnlocked("E-03"));
+    }
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-6">
       <div className="mx-auto w-full max-w-3xl">
@@ -39,73 +68,71 @@ export default function Page() {
             </div>
           </div>
 
-          <CaseNavLinks caseHref="/cases/silent-switchboard" contextHref="/cases/silent-switchboard/case-file/evidence-list" contextLabel="Back to Evidence List" />
+          <CaseNavLinks
+            caseHref="/cases/silent-switchboard"
+            contextHref="/cases/silent-switchboard/case-file/evidence-list"
+            contextLabel="Back to Evidence List"
+          />
         </header>
 
-        <section className="space-y-4">
-          <div className="rounded-2xl border border-slate-800 bg-slate-900/30 p-6 space-y-2">
-            <div className="text-xs text-slate-400">REGISTER ENTRY</div>
-            <div className="text-sm text-slate-200">
-              Ref: <span className="font-mono">E-03</span> • Collected: <span className="font-mono">03/05/91 04:35</span>
+        {!ok ? (
+          <section className="space-y-4">
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/30 p-6 space-y-2">
+              <div className="text-xs text-slate-400">ACCESS STATUS</div>
+              <div className="text-lg font-semibold">LOCKED</div>
+              <div className="text-sm text-slate-200">
+                Clue: locate the access log header stamp and the faint footer reference. Submit as{" "}
+                <span className="font-mono">WHX/OPS 1991-022-03</span>.
+              </div>
+              <div className="pt-3 flex flex-col sm:flex-row gap-3">
+                <Link
+                  href="/investigation-room"
+                  className="rounded-xl border border-slate-700 hover:bg-slate-900 transition px-4 py-3 font-medium text-center"
+                >
+                  Go to Investigation Room (submit solution)
+                </Link>
+                <Link
+                  href="/cases/silent-switchboard/case-file/evidence-list"
+                  className="rounded-xl border border-slate-700 hover:bg-slate-900 transition px-4 py-3 font-medium text-center"
+                >
+                  Evidence List (unlock shortcut)
+                </Link>
+              </div>
             </div>
-            <div className="text-sm text-slate-200">
-              Item: Dot-matrix access log (partial). Header stamp <span className="font-mono">WHX/OPS</span>. Footer reference <span className="font-mono">1991-022-03</span>.
+          </section>
+        ) : (
+          <section className="space-y-4">
+            <div className="rounded-2xl border border-slate-800 bg-slate-900/30 p-6 space-y-2">
+              <div className="text-xs text-slate-400">REGISTER ENTRY</div>
+              <div className="text-sm text-slate-200">
+                Ref: <span className="font-mono">E-03</span> • Collected: <span className="font-mono">03/05/91 04:35</span>
+              </div>
+              <div className="text-sm text-slate-200">
+                Item: Dot-matrix access log (partial). Header stamp <span className="font-mono">WHX/OPS</span>. Footer reference{" "}
+                <span className="font-mono">1991-022-03</span>.
+              </div>
             </div>
-          </div>
 
-          <Panel title="Evidence Sheet (PDF)">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-xs text-slate-400">If the embedded viewer fails, open the file directly.</div>
-              <a
-                href={PDF_SRC}
-                target="_blank"
-                rel="noreferrer"
-                className="text-sm text-slate-300 hover:text-white underline underline-offset-4 decoration-slate-600 hover:decoration-slate-300"
-              >
-                Open PDF
-              </a>
-            </div>
+            <Panel title="Evidence Sheet (PDF)">
+              <div className="flex items-center justify-between gap-3">
+                <div className="text-xs text-slate-400">If the embedded viewer fails, open the file directly.</div>
+                <Link href={PDF_SRC} className="rounded-xl border border-slate-700 hover:bg-slate-900 transition px-4 py-2 text-xs font-medium">
+                  Open PDF
+                </Link>
+              </div>
+              <div className="mt-3 rounded-xl overflow-hidden border border-slate-800 bg-black">
+                <iframe src={PDF_SRC} className="w-full h-[520px]" />
+              </div>
+            </Panel>
 
-            <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/30 overflow-hidden">
-              <object data={PDF_SRC} type="application/pdf" className="w-full h-[70vh]">
-                <div className="p-4 text-sm text-slate-200">
-                  PDF preview unavailable in this browser.{" "}
-                  <a
-                    href={PDF_SRC}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline underline-offset-4 decoration-slate-600 hover:decoration-slate-300"
-                  >
-                    Open PDF
-                  </a>
-                  .
-                </div>
-              </object>
-            </div>
-          </Panel>
-
-          <Panel title="Evidence Photo">
-            <div className="rounded-xl border border-slate-800 bg-slate-950/30 overflow-hidden">
-              <Image
-                src={PHOTO_SRC}
-                alt="E-03 Photo — Dot-matrix Access Log in Evidence Bag"
-                width={1200}
-                height={900}
-                className="w-full h-auto"
-                priority
-              />
-            </div>
-            <div className="text-xs text-slate-500">
-              Exhibit photo: bagged dot-matrix printout. Manual maintenance override recorded within the incident window.
-            </div>
-          </Panel>
-
-          <div className="flex flex-col sm:flex-row gap-3 pt-2">
-            <CaseNavLinks caseHref="/cases/silent-switchboard" contextHref="/cases/silent-switchboard/case-file/evidence-list" contextLabel="Back to Evidence List" />
-          </div>
-        </section>
+            <Panel title="Photo (evidence bag)">
+              <div className="rounded-xl overflow-hidden border border-slate-800 bg-black">
+                <Image src={PHOTO_SRC} alt="Evidence bag photo" width={1200} height={900} className="w-full h-auto" />
+              </div>
+            </Panel>
+          </section>
+        )}
       </div>
     </main>
   );
 }
-

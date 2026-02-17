@@ -14,6 +14,12 @@ type SlotDef = {
   accepts: string[]; // accepted codes (normalized)
 };
 
+type LogEntry = {
+  id: string;
+  ts: number;
+  text: string;
+};
+
 function normalize(input: string) {
   return input
     .trim()
@@ -68,6 +74,19 @@ function Slot({
   );
 }
 
+function timeHHMM(ts: number) {
+  try {
+    const d = new Date(ts);
+    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  } catch {
+    return "--:--";
+  }
+}
+
+function uid() {
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
 export default function Page() {
   const slots: SlotDef[] = useMemo(
     () => [
@@ -105,9 +124,10 @@ export default function Page() {
   );
 
   const storageKey = "scib_unlocks_silent_switchboard_v1";
+  const logKey = "scib_room_access_log_silent_switchboard_v1";
 
   const [code, setCode] = useState("");
-  const [status, setStatus] = useState("Awaiting input.");
+  const [status, setStatus] = useState("SYSTEM STATE: STANDBY");
   const [loaded, setLoaded] = useState(false);
 
   const [unlocked, setUnlocked] = useState<Record<RecKey, boolean>>({
@@ -116,6 +136,8 @@ export default function Page() {
     "REC-03": false,
     "REC-04": false,
   });
+
+  const [roomLog, setRoomLog] = useState<LogEntry[]>([]);
 
   // Load unlocks first
   useEffect(() => {
@@ -144,33 +166,121 @@ export default function Page() {
     }
   }, [loaded, unlocked]);
 
+  // Load access log
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem(logKey);
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          const cleaned = parsed
+            .filter((x) => x && typeof x === "object" && typeof x.ts === "number" && typeof x.text === "string")
+            .map((x) => ({ id: typeof x.id === "string" ? x.id : uid(), ts: x.ts, text: x.text }));
+          setRoomLog(cleaned.slice(-20));
+        }
+      }
+    } catch {
+      // ignore
+    }
+  }, []);
+
+  // Persist access log
+  useEffect(() => {
+    try {
+      localStorage.setItem(logKey, JSON.stringify(roomLog.slice(-20)));
+    } catch {
+      // ignore
+    }
+  }, [roomLog]);
+
+  // Keep multiple tabs in sync
+  useEffect(() => {
+    function onStorage(e: StorageEvent) {
+      if (e.key === logKey && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (Array.isArray(parsed)) {
+            const cleaned = parsed
+              .filter((x) => x && typeof x === "object" && typeof x.ts === "number" && typeof x.text === "string")
+              .map((x) => ({ id: typeof x.id === "string" ? x.id : uid(), ts: x.ts, text: x.text }));
+            setRoomLog(cleaned.slice(-20));
+          }
+        } catch {
+          // ignore
+        }
+      }
+      if (e.key === storageKey && e.newValue) {
+        try {
+          const parsed = JSON.parse(e.newValue);
+          if (parsed && typeof parsed === "object") {
+            setUnlocked((prev) => ({ ...prev, ...parsed }));
+          }
+        } catch {
+          // ignore
+        }
+      }
+    }
+    window.addEventListener("storage", onStorage);
+    return () => window.removeEventListener("storage", onStorage);
+  }, []);
+
+  function appendLog(text: string) {
+    const entry: LogEntry = { id: uid(), ts: Date.now(), text };
+    setRoomLog((prev) => [...prev.slice(-19), entry]);
+  }
+
+  function gentleNudge(n: string) {
+    // "Human" partials — brief and not procedural-heavy.
+    const hasStamp = n.includes("WHX/OPS");
+    const hasIndex = n.includes("1991-022-03") || n.includes("1991-022-3");
+    const hasPager = n.includes("PAGER");
+    const hasPhrase = n.includes("SWITCHBOARD");
+    const hasNameish = /^[A-Z]+[-\s][A-Z]$/.test(n) || n.includes("BAINES");
+
+    if (hasStamp && !hasIndex) return "Close — exchange stamp recognised. A second reference is usually appended.";
+    if (!hasStamp && hasIndex) return "Reference recognised. Try pairing it with the exchange stamp from the file.";
+    if (hasPager && !n.includes("WHX") && !n.includes("1991")) return "Close — pager index recognised. It usually includes location/year.";
+    if (hasPhrase) return "Close — warning phrase detected. Check punctuation and spacing from the source artefact.";
+    if (hasNameish) return "Close — personnel-style identifier detected. Check exact format in the recovered index.";
+    return "No match found for that reference.";
+  }
+
   function submit() {
     const n = normalize(code);
 
     if (!n) {
-      setStatus("Awaiting input.");
+      setStatus("SYSTEM STATE: STANDBY");
       return;
     }
 
+    appendLog(`Attempt recorded: "${n}"`);
+
     const match = slots.find((s) => s.accepts.includes(n));
     if (!match) {
-      setStatus(`No matching archive found. (You entered: "${n}")`);
+      const msg = gentleNudge(n);
+      setStatus(msg);
+      appendLog(msg);
+      setCode("");
       return;
     }
 
     if (unlocked[match.id]) {
-      setStatus(`${match.id} already unlocked.`);
+      const msg = `${match.id} already unsealed.`;
+      setStatus(msg);
+      appendLog(msg);
+      setCode("");
       return;
     }
 
     setUnlocked((prev) => ({ ...prev, [match.id]: true }));
-    setStatus(`ARCHIVE ${match.id} LOCATED. INTEGRITY CHECK… OK. ACCESS GRANTED.`);
+    setStatus(`Retrieval accepted. ${match.id} unsealed.`);
+    appendLog(`Retrieval accepted. ${match.id} unsealed.`);
     setCode("");
   }
 
   function clear() {
     setCode("");
-    setStatus("Awaiting input.");
+    setStatus("SYSTEM STATE: STANDBY");
   }
 
   return (
@@ -204,9 +314,6 @@ export default function Page() {
             {slots.map((s) => (
               <Slot key={s.id} id={s.id} label={s.label} href={s.href} locked={!unlocked[s.id]} />
             ))}
-            <div className="text-xs text-slate-500 pt-2">
-              Prototype note: unlock state is stored locally in your browser.
-            </div>
           </div>
 
           <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-5 space-y-4">
@@ -220,7 +327,7 @@ export default function Page() {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") submit();
                 }}
-                placeholder="ENTER RETRIEVAL KEY"
+                placeholder="ENTER AUTHORIZATION STRING"
                 className="w-full bg-transparent outline-none placeholder:text-slate-500"
               />
             </div>
@@ -240,23 +347,38 @@ export default function Page() {
               </button>
             </div>
 
-            <div className="text-xs text-slate-500 pt-2">STATUS: {status}</div>
+            <div className="text-xs text-slate-500 pt-1">STATUS: {status}</div>
 
-            <details className="rounded-xl border border-slate-800 bg-slate-950/30 p-4">
-              <summary className="cursor-pointer select-none text-sm text-slate-300">
-                If you get stuck (prototype hints)
-              </summary>
-              <div className="mt-3 space-y-2 text-sm text-slate-200">
-                <div><span className="text-slate-400">REC-01:</span> WHX/OPS + 1991-022-03</div>
-                <div><span className="text-slate-400">REC-02:</span> PAGER/WHX/1991</div>
-                <div><span className="text-slate-400">REC-03:</span> BAINES-J</div>
-                <div><span className="text-slate-400">REC-04:</span> DON’T TRUST THE SWITCHBOARD</div>
+            <div className="rounded-xl border border-slate-800 bg-slate-950/30 p-4">
+              <div className="text-xs text-slate-400 mb-3">ACCESS LOG (ROOM)</div>
+
+              {roomLog.length === 0 ? (
+                <div className="text-sm text-slate-300">
+                  No access attempts recorded in this session.
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {roomLog
+                    .slice()
+                    .reverse()
+                    .slice(0, 8)
+                    .map((e) => (
+                      <div key={e.id} className="text-sm text-slate-200">
+                        <span className="font-mono text-slate-400">{timeHHMM(e.ts)}</span>
+                        <span className="text-slate-500"> — </span>
+                        <span>{e.text}</span>
+                      </div>
+                    ))}
+                </div>
+              )}
+
+              <div className="pt-3 text-xs text-slate-500">
+                Note: keys are derived from artefacts already present in the case file.
               </div>
-            </details>
+            </div>
           </div>
         </section>
       </div>
     </main>
   );
 }
-

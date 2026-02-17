@@ -45,6 +45,89 @@ function StatusPill({ state }: { state: "available" | "locked" }) {
   );
 }
 
+const UNLOCK_STORE_KEY = "scib_case01_unlocked_evidence_v1";
+
+function normalizeCode(raw: string) {
+  return (raw || "")
+    .trim()
+    .toUpperCase()
+    .replace(/[’']/g, "'")
+    .replace(/[^A-Z0-9\/\-\+\s']/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function readUnlocked(): string[] {
+  try {
+    const raw = localStorage.getItem(UNLOCK_STORE_KEY);
+    if (!raw) return ["E-01", "E-02"];
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed) && parsed.every((x) => typeof x === "string")) {
+      const base = new Set(["E-01", "E-02", ...parsed.map((s) => s.toUpperCase())]);
+      return Array.from(base);
+    }
+    return ["E-01", "E-02"];
+  } catch {
+    return ["E-01", "E-02"];
+  }
+}
+
+function writeUnlocked(ids: string[]) {
+  const base = new Set(["E-01", "E-02", ...ids.map((s) => s.toUpperCase())]);
+  localStorage.setItem(UNLOCK_STORE_KEY, JSON.stringify(Array.from(base)));
+}
+
+// Codes -> bundles (local prototype).
+// - MKELLS (from E-01) unlocks E-05 + E-06
+// - WHX/OPS 1991-022-03 unlocks E-03
+// - DON'T TRUST THE SWITCHBOARD unlocks E-04
+function applyEvidenceUnlock(codeRaw: string): { ok: boolean; unlocked: string[]; message: string } {
+  const code = normalizeCode(codeRaw);
+
+  if (!code) return { ok: false, unlocked: [], message: "Enter a solution." };
+
+  const unlocks: string[] = [];
+
+  if (code === "MKELLS") {
+    unlocks.push("E-05", "E-06");
+  }
+
+  if (code === "WHX/OPS 1991-022-03" || code === "WHX/OPS+1991-022-03") {
+    unlocks.push("E-03");
+  }
+
+  if (code === "DON'T TRUST THE SWITCHBOARD" || code === "DONT TRUST THE SWITCHBOARD") {
+    unlocks.push("E-04");
+  }
+
+  if (unlocks.length === 0) {
+    return { ok: false, unlocked: [], message: "That is not correct." };
+  }
+
+  const current = readUnlocked();
+  const next = Array.from(new Set([...current, ...unlocks]));
+  writeUnlocked(next);
+
+  return { ok: true, unlocked: unlocks, message: `Unlocked: ${unlocks.join(", ")}` };
+}
+
+function ClueBlock({ id }: { id: string }) {
+  const clue =
+    id === "E-03"
+      ? 'Clue: locate the access log header stamp and the faint footer reference. Submit as "WHX/OPS 1991-022-03".'
+      : id === "E-04"
+      ? "Clue: a single warning phrase in the engineer notebook is the keyword. Submit the phrase exactly."
+      : id === "E-05"
+      ? "Clue: use the access card label from E-01."
+      : id === "E-06"
+      ? "Clue: use the access card label from E-01."
+      : "";
+
+  if (!clue) return null;
+
+  return <div className="pt-2 text-xs text-slate-500">{clue}</div>;
+}
+
 export default function RoomClient() {
   const [username, setUsername] = useState<string>("UNIDENTIFIED");
 
@@ -52,6 +135,10 @@ export default function RoomClient() {
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  const [unlockCode, setUnlockCode] = useState("");
+  const [unlockMsg, setUnlockMsg] = useState<string | null>(null);
+  const [unlockedEvidence, setUnlockedEvidence] = useState<string[]>(["E-01", "E-02"]);
 
   const streamRef = useRef<EventSource | null>(null);
 
@@ -65,17 +152,25 @@ export default function RoomClient() {
     []
   );
 
-  const evidenceItems = useMemo(
+  const evidenceCatalog = useMemo(
     () => [
-      { id: "E-01", label: "Lanyard + Access Card", href: "/cases/silent-switchboard/case-file/evidence/e-01", state: "available" as const },
-      { id: "E-02", label: "Coffee Cup", href: "/cases/silent-switchboard/case-file/evidence/e-02", state: "available" as const },
-      { id: "E-03", label: "Dot-matrix Access Log (partial)", href: "/cases/silent-switchboard/case-file/evidence/e-03", state: "available" as const },
-      { id: "E-04", label: "Engineer Notebook Page", href: "/cases/silent-switchboard/case-file/evidence/e-04", state: "available" as const },
-      { id: "E-05", label: "Master Key Inventory Sheet", href: "/cases/silent-switchboard/case-file/evidence/e-05", state: "available" as const },
-      { id: "E-06", label: "Maintenance Console Printout", href: "/cases/silent-switchboard/case-file/evidence/e-06", state: "available" as const },
+      { id: "E-01", label: "Lanyard + Access Card", href: "/cases/silent-switchboard/case-file/evidence/e-01" },
+      { id: "E-02", label: "Coffee Cup", href: "/cases/silent-switchboard/case-file/evidence/e-02" },
+      { id: "E-03", label: "Dot-matrix Access Log (partial)", href: "/cases/silent-switchboard/case-file/evidence/e-03" },
+      { id: "E-04", label: "Engineer Notebook Page", href: "/cases/silent-switchboard/case-file/evidence/e-04" },
+      { id: "E-05", label: "Master Key Inventory Sheet", href: "/cases/silent-switchboard/case-file/evidence/e-05" },
+      { id: "E-06", label: "Maintenance Console Printout", href: "/cases/silent-switchboard/case-file/evidence/e-06" },
     ],
     []
   );
+
+  const evidenceItems = useMemo(() => {
+    const unlockedSet = new Set(unlockedEvidence.map((s) => s.toUpperCase()));
+    return evidenceCatalog.map((e) => ({
+      ...e,
+      state: unlockedSet.has(e.id) ? ("available" as const) : ("locked" as const),
+    }));
+  }, [evidenceCatalog, unlockedEvidence]);
 
   const recoveredItems = useMemo(
     () => [
@@ -102,16 +197,19 @@ export default function RoomClient() {
     }
   }
 
+  function refreshUnlocks() {
+    setUnlockedEvidence(readUnlocked());
+  }
+
   useEffect(() => {
-    // Display identity (cookie is httpOnly; this is for UI display only)
     try {
       const v = localStorage.getItem("scib_username_display_v1");
       if (v) setUsername(v);
     } catch {}
 
+    refreshUnlocks();
     loadInitial();
 
-    // Start realtime stream
     try {
       const es = new EventSource(caseMeta.roomStream);
       streamRef.current = es;
@@ -123,9 +221,7 @@ export default function RoomClient() {
             if (prev.some((p) => p.id === post.id)) return prev;
             return [post, ...prev];
           });
-        } catch {
-          // ignore malformed
-        }
+        } catch {}
       });
 
       es.addEventListener("error", () => {
@@ -135,11 +231,17 @@ export default function RoomClient() {
       setErr("Unable to start realtime stream.");
     }
 
+    function onStorage(e: StorageEvent) {
+      if (e.key === UNLOCK_STORE_KEY) refreshUnlocks();
+    }
+    window.addEventListener("storage", onStorage);
+
     return () => {
       try {
         streamRef.current?.close();
       } catch {}
       streamRef.current = null;
+      window.removeEventListener("storage", onStorage);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
@@ -165,7 +267,6 @@ export default function RoomClient() {
         return;
       }
 
-      // SSE will push it back to us
       setText("");
     } catch {
       setErr("Network error.");
@@ -174,10 +275,18 @@ export default function RoomClient() {
     }
   }
 
+  function submitUnlock() {
+    const result = applyEvidenceUnlock(unlockCode);
+    setUnlockMsg(result.message);
+    if (result.ok) {
+      refreshUnlocks();
+      setUnlockCode("");
+    }
+  }
+
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-6">
       <div className="mx-auto w-full max-w-5xl space-y-6">
-        {/* Header */}
         <header className="flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <Image src="/brand/scib-badge.png" alt="SCIB Badge" width={48} height={48} priority />
@@ -201,7 +310,6 @@ export default function RoomClient() {
           </div>
         </header>
 
-        {/* Top grid */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Panel title="Detective Identity">
             <div className="flex items-center gap-4">
@@ -259,19 +367,57 @@ export default function RoomClient() {
           </Panel>
         </div>
 
-        {/* Access status */}
+        <Panel title="Case Access Console — Evidence Unlock">
+          <div className="text-sm text-slate-200">
+            If an item is sealed, solve the clue and submit the solution here. Successful solutions unlock the next material on this device.
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
+            <input
+              value={unlockCode}
+              onChange={(e) => setUnlockCode(e.target.value)}
+              placeholder='Enter solution (e.g. MKELLS)'
+              className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-4 py-3 outline-none focus:border-slate-600"
+            />
+            <button
+              onClick={submitUnlock}
+              className="rounded-xl border border-slate-700 hover:bg-slate-900 transition px-4 py-3 font-medium"
+              type="button"
+            >
+              Submit Solution
+            </button>
+            <div className="text-xs text-slate-500 flex items-center">
+              Tip: post findings with links after unlocking (copy the Evidence URL from the list below).
+            </div>
+          </div>
+
+          {unlockMsg ? (
+            <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-3 text-sm text-slate-200">{unlockMsg}</div>
+          ) : null}
+        </Panel>
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Panel title="Case Access — Evidence">
             <div className="space-y-2">
               {evidenceItems.map((e) => (
-                <div key={e.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/30 px-4 py-3">
+                <div
+                  key={e.id}
+                  className="flex items-start justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/30 px-4 py-3"
+                >
                   <div className="min-w-0">
                     <div className="text-sm font-medium">
-                      <Link className="underline underline-offset-4 decoration-slate-700 hover:decoration-slate-300" href={e.href}>
-                        {e.id}
-                      </Link>
+                      {e.state === "available" ? (
+                        <Link className="underline underline-offset-4 decoration-slate-700 hover:decoration-slate-300" href={e.href}>
+                          {e.id}
+                        </Link>
+                      ) : (
+                        <span className="font-mono text-slate-300">{e.id}</span>
+                      )}
                     </div>
-                    <div className="text-xs text-slate-400 truncate">{e.label}</div>
+                    <div className="text-xs text-slate-400 truncate">
+                      {e.state === "available" ? e.label : "SEALED REGISTER ENTRY"}
+                    </div>
+                    {e.state === "locked" ? <ClueBlock id={e.id} /> : null}
                   </div>
                   <StatusPill state={e.state} />
                 </div>
@@ -301,14 +447,13 @@ export default function RoomClient() {
           </Panel>
         </div>
 
-        {/* Findings */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Panel title="Post a Finding">
             <div className="rounded-xl border border-slate-800 bg-black px-4 py-3">
               <textarea
                 value={text}
                 onChange={(e) => setText(e.target.value)}
-                placeholder="Post your finding for the team… (e.g. check E-06 for key auth reference)"
+                placeholder="Post your finding for the team… (include evidence links)"
                 className="w-full bg-transparent outline-none text-sm text-slate-200 placeholder:text-slate-500 min-h-[140px] resize-none"
                 disabled={busy}
               />
