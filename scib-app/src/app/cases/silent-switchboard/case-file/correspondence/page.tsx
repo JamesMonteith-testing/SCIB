@@ -1,54 +1,123 @@
-﻿import Image from "next/image";
-import Link from "next/link";
+﻿"use client";
+
+import Image from "next/image";
+import { useEffect, useState } from "react";
 import CaseNavLinks from "@/components/CaseNavLinks";
 
-function EmailBlock({
+function Tag({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center rounded-full border border-slate-700 bg-slate-950/40 px-3 py-1 text-xs text-slate-200">
+      {children}
+    </span>
+  );
+}
+
+function EmailCard({
   from,
   to,
   date,
   subject,
   children,
+  badge,
 }: {
   from: string;
   to: string;
   date: string;
   subject: string;
   children: React.ReactNode;
+  badge?: string;
 }) {
   return (
-    <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-5 space-y-3">
-      <div className="text-xs text-slate-400">
-        FROM: {from}
+    <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-6 space-y-3">
+      <div className="flex items-start justify-between gap-4">
+        <div className="space-y-1 text-sm text-slate-200">
+          <div className="text-xs text-slate-400">FROM: {from}</div>
+          <div className="text-xs text-slate-400">TO: {to}</div>
+          <div className="text-xs text-slate-400">DATE: {date}</div>
+        </div>
+        <div className="flex items-center gap-2">
+          <Tag>SCIB-CC-1991-022</Tag>
+          {badge ? <Tag>{badge}</Tag> : null}
+        </div>
       </div>
-      <div className="text-xs text-slate-400">
-        TO: {to}
+
+      <div className="pt-1">
+        <div className="text-sm font-semibold">SUBJECT: {subject}</div>
       </div>
-      <div className="text-xs text-slate-400">
-        DATE: {date}
-      </div>
-      <div className="text-sm font-semibold text-slate-200">
-        SUBJECT: {subject}
-      </div>
-      <div className="text-sm text-slate-300 leading-relaxed">
-        {children}
-      </div>
+
+      <div className="text-slate-200 text-sm leading-relaxed whitespace-pre-line">{children}</div>
     </div>
   );
 }
 
-export default function Page() {
+function StubRow({ label }: { label: string }) {
+  return (
+    <div className="rounded-xl border border-slate-800 bg-slate-950/30 px-4 py-3 text-sm text-slate-300 flex items-center justify-between gap-3">
+      <span className="font-mono">{label}</span>
+      <span className="text-xs text-slate-500">STUB</span>
+    </div>
+  );
+}
+
+const STORAGE_KEY_EXPANDED = "scib_correspondence_expanded_v1";
+const STORAGE_KEY_DELETED = "scib_deleted_correspondence_unlocked_v1";
+
+function normalizeKey(input: string) {
+  let s = (input || "").toUpperCase();
+  s = s.replace(/[\s\-_]/g, "");
+  return s;
+}
+
+export default function CorrespondencePage() {
+  const [input, setInput] = useState("");
+  const [status, setStatus] = useState("STATUS: Awaiting input.");
+  const [expanded, setExpanded] = useState(false);
+
+  const expected = "HETTIE050389";
+
+  useEffect(() => {
+    try {
+      const v = localStorage.getItem(STORAGE_KEY_EXPANDED);
+      setExpanded(v === "true");
+      if (v === "true") setStatus("STATUS: Archive restored. Additional messages are now visible.");
+    } catch {}
+  }, []);
+
+  function submit() {
+    const n = normalizeKey(input);
+
+    if (!n) {
+      setStatus("STATUS: Enter a reference.");
+      return;
+    }
+
+    if (n === expected) {
+      try {
+        localStorage.setItem(STORAGE_KEY_EXPANDED, "true");
+        localStorage.setItem(STORAGE_KEY_DELETED, "true");
+      } catch {}
+      setExpanded(true);
+      setStatus("STATUS: Archive restored. Additional messages are now visible.");
+      setInput("");
+      return;
+    }
+
+    setStatus("STATUS: No match on this reference. Check spacing/date format and try again.");
+  }
+
+  // IMPORTANT: your file is currently under public/evidence/SCIB-CC-1991-022/E-01/
+  const HETTIE_PHOTO = "/evidence/SCIB-CC-1991-022/E-01/hettie-birthday-party.png";
+
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-6">
-      <div className="mx-auto w-full max-w-3xl">
+      <div className="mx-auto w-full max-w-3xl space-y-6">
         <header className="flex items-center justify-between gap-4 py-4">
           <div className="flex items-center gap-4">
             <Image src="/brand/scib-badge.png" alt="SCIB Badge" width={48} height={48} priority />
             <div>
               <div className="text-xs text-slate-400">SCIB Case File</div>
               <h1 className="text-xl font-semibold">Internal Correspondence (Extract)</h1>
-              <p className="text-sm text-slate-300">
-                West Harrow Exchange — March 1991
-              </p>
+              <p className="text-sm text-slate-300">West Harrow Exchange — March 1991</p>
             </div>
           </div>
 
@@ -59,68 +128,122 @@ export default function Page() {
           />
         </header>
 
-        <section className="space-y-6">
-
-          <EmailBlock
+        {/* PUBLIC EXTRACT — always visible */}
+        <section className="space-y-4">
+          <EmailCard
             from="ops.supervisor@whx-exchange.local"
             to="mkells@whx-exchange.local"
             date="05 MAR 1991 — 03:42"
             subject="Access Log Clarification"
+            badge="PUBLIC EXTRACT"
           >
-            Martin, <br /><br />
-            The overnight console printed a partial access sheet again. It is stamped
-            <span className="font-mono"> WHX/OPS </span> at the header. <br /><br />
-            I need the appended internal reference pulled from the footer before shift
-            change. I believe it reads something like
-            <span className="font-mono"> 1991-022-03 </span> but confirm before filing.
-            <br /><br />
-            — D.
-          </EmailBlock>
+            {"Martin,\n\nThe overnight console printed a partial access sheet again. It is stamped WHX/OPS at the header.\n\nI need the appended internal reference pulled from the footer before shift change. I believe it reads something like 1991-022-03 but confirm before filing.\n\n— D."}
+          </EmailCard>
 
-          <EmailBlock
+          <EmailCard
             from="mkells@whx-exchange.local"
             to="ops.supervisor@whx-exchange.local"
             date="05 MAR 1991 — 03:58"
             subject="Re: Access Log Clarification"
+            badge="PUBLIC EXTRACT"
           >
-            Confirmed. The footer index is
-            <span className="font-mono"> 1991-022-03 </span>. <br /><br />
-            Also — someone left a note in the engineer book.
-            Exact wording:
-            <span className="font-mono"> DON’T TRUST THE SWITCHBOARD </span>.
-            <br /><br />
-            I have not logged it formally yet.
-            <br /><br />
-            — M.
-          </EmailBlock>
+            {"Confirmed. The footer index is 1991-022-03.\n\nAlso — someone left a note in the engineer book. Exact wording: DON’T TRUST THE SWITCHBOARD.\n\nI have not logged it formally yet."}
+          </EmailCard>
 
-          <EmailBlock
-            from="facilities@whx-exchange.local"
-            to="ops.supervisor@whx-exchange.local"
+          {/* HETTIE EMAIL — PUBLIC, always visible */}
+          <EmailCard
+            from="mkells@whx-exchange.local"
+            to="r.hayward@scib.local"
             date="05 MAR 1991 — 04:11"
-            subject="Key Cabinet"
+            subject="(Personal) Quick thing before shift ends"
+            badge="PUBLIC EXTRACT"
           >
-            The master key cabinet was not inventoried at 03:00 as scheduled.
-            <br /><br />
-            I will reconcile against the sheet in the morning.
-            <br /><br />
-            — Facilities
-          </EmailBlock>
+            {"Ruth,\n\nDon’t laugh — I found the photo from Hettie’s first birthday. She’s two now and still thinks every box is hers.\n\nAttachment is the only copy I’ve got.\n\n— M."}
 
-          <div className="pt-6 text-xs text-slate-500">
-            Note: References contained in correspondence may be required to retrieve
-            supplementary materials via the Recovery Terminal.
-          </div>
+            <div className="mt-4 rounded-xl border border-slate-800 bg-slate-950/30 overflow-hidden">
+              <img src={HETTIE_PHOTO} alt="Attachment: Hettie's first birthday (photo)" className="w-full h-auto" />
+            </div>
 
+            <div className="text-xs text-slate-500 mt-2">
+              Attachment: <span className="font-mono">hettie-birthday-party.png</span>
+            </div>
+          </EmailCard>
         </section>
 
-        <div className="pt-8">
-          <Link
-            href="/cases/silent-switchboard"
-            className="rounded-xl border border-slate-700 hover:bg-slate-900 transition px-4 py-3 font-medium text-center inline-block"
-          >
-            Back to Case
-          </Link>
+        {/* LOCKED / UNLOCKED STUBS */}
+        <section className="rounded-2xl border border-slate-800 bg-slate-900/20 p-6 space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="text-sm font-semibold">Additional Messages</div>
+              <div className="text-xs text-slate-500">Some correspondence is withheld pending a verified archive reference.</div>
+            </div>
+            <Tag>{expanded ? "EXPANDED" : "WITHHELD"}</Tag>
+          </div>
+
+          {!expanded ? (
+            <div className="space-y-2">
+              <StubRow label="Thread fragment — withheld pending reference" />
+              <StubRow label="Attachment index — unavailable" />
+              <StubRow label="Forwarded chain — truncated" />
+            </div>
+          ) : (
+            <div className="space-y-2">
+              <StubRow label="Thread fragment — restored (stub)" />
+              <StubRow label="Attachment index — restored (stub)" />
+              <StubRow label="Forwarded chain — restored (stub)" />
+              <StubRow label="Personal note — restored (stub)" />
+            </div>
+          )}
+        </section>
+
+        {/* OLD-STYLE INPUT TERMINAL */}
+        <section className="rounded-2xl border border-slate-800 bg-slate-950/40 p-6 space-y-4">
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="text-xs text-slate-400">ARCHIVE RETRIEVAL</div>
+              <div className="text-sm text-slate-200">Enter a reference to expand the correspondence extract.</div>
+              <div className="text-xs text-slate-500 mt-1">Tip: spacing and hyphens don’t matter.</div>
+            </div>
+            <Tag>CONSOLE</Tag>
+          </div>
+
+          <div className="rounded-xl border border-slate-800 bg-black/40 px-4 py-4 space-y-3">
+            <div className="font-mono text-xs text-slate-400">{"> ENTER ARCHIVE REFERENCE"}</div>
+
+            <input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              placeholder="e.g. HETTIE050389"
+              className="w-full font-mono rounded-lg bg-black/50 border border-slate-800 px-3 py-3 text-slate-100 outline-none focus:border-slate-600"
+            />
+
+            <div className="flex items-center gap-3">
+              <button onClick={submit} className="rounded-xl border border-slate-700 hover:bg-slate-900 transition px-4 py-2 font-mono text-sm">
+                SUBMIT
+              </button>
+              <button
+                onClick={() => {
+                  setInput("");
+                  setStatus("STATUS: Awaiting input.");
+                }}
+                className="rounded-xl border border-slate-800 hover:bg-slate-900 transition px-4 py-2 font-mono text-sm text-slate-300"
+              >
+                CLEAR
+              </button>
+            </div>
+
+            <div className="font-mono text-xs text-slate-400">{status}</div>
+          </div>
+
+          <div className="text-xs text-slate-500">Prototype note: unlock state is stored locally in your browser.</div>
+        </section>
+
+        <div className="pt-2">
+          <CaseNavLinks
+            caseHref="/cases/silent-switchboard"
+            contextHref="/cases/silent-switchboard/case-file/evidence-list"
+            contextLabel="Back to Evidence List"
+          />
         </div>
       </div>
     </main>
