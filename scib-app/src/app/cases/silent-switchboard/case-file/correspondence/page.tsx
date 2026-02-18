@@ -115,6 +115,8 @@ export default function CorrespondencePage() {
   }
 
   function submit() {
+    if (retrieving) return;
+
     const n = normalizeKey(input);
 
     if (!n) {
@@ -123,10 +125,7 @@ export default function CorrespondencePage() {
     }
 
     if (n === expected) {
-      if (expanded) {
-        setStatus("STATUS: Archive already restored. Additional messages are now visible.");
-        return;
-      }
+      // Always run the retrieval animation on a valid reference.
       startRetrieval();
       return;
     }
@@ -157,7 +156,9 @@ export default function CorrespondencePage() {
           />
         </header>
 
-        {/* PUBLIC EXTRACT — always visible */}
+<div className="grid grid-cols-1 lg:grid-cols-[1fr_420px] gap-6 items-start">
+  <div className="space-y-6">
+{/* PUBLIC EXTRACT — always visible */}
         <section className="space-y-4">
           <EmailCard
             from="ops.supervisor@whx-exchange.local"
@@ -226,6 +227,32 @@ export default function CorrespondencePage() {
         </section>
 
         {/* OLD-STYLE INPUT TERMINAL */}
+  </div>
+
+  <aside className="space-y-4">
+  <section className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
+    <div className="flex items-start justify-between gap-4">
+      <div>
+        <div className="text-xs text-slate-400">ARCHIVE FLAGS</div>
+        <div className="text-sm text-slate-200 mt-1">Legacy parse output (WHX exchange extract)</div>
+      </div>
+      <span className="inline-flex items-center rounded-full border border-slate-700 bg-slate-950/60 px-2 py-0.5 text-[11px] text-slate-300">
+        STUB
+      </span>
+    </div>
+
+    <ul className="mt-3 space-y-2 text-sm text-slate-200">
+      <li>• Keyword detected: <span className="font-mono">HETTIE</span></li>
+      <li>• Attachment signature: <span className="font-mono">PNG/1991</span></li>
+      <li>• Cross-reference: <span className="font-mono">WHX/OPS</span></li>
+      <li>• Ref match pending: <span className="font-mono">1991-022-03</span></li>
+    </ul>
+
+    <div className="mt-3 text-xs text-slate-500">
+      This panel reflects archive parsing, not SCIB annotations.
+    </div>
+  </section>
+
         <section className="rounded-2xl border border-slate-800 bg-slate-950/40 p-6 space-y-4">
           <div className="flex items-start justify-between gap-4">
             <div>
@@ -236,18 +263,18 @@ export default function CorrespondencePage() {
             <Tag>CONSOLE</Tag>
           </div>
 
-          <div className="rounded-xl border border-slate-800 bg-black/40 px-4 py-4 space-y-3">
-            <div className="font-mono text-xs text-slate-400">{"> ENTER ARCHIVE REFERENCE"}</div>
+          <div className="border border-green-700 bg-black px-4 py-4 space-y-3 font-mono text-green-400">
+            <div className="text-xs text-green-500">{"> ENTER ARCHIVE REFERENCE"}</div>
 
             <input
               value={input}
-              onChange={(e) => setInput(e.target.value)} disabled={retrieving || expanded}
+              onChange={(e) => setInput(e.target.value)} disabled={retrieving}
               placeholder="e.g. HETTIE050389"
-              className="w-full font-mono rounded-lg bg-black/50 border border-slate-800 px-3 py-3 text-slate-100 outline-none focus:border-slate-600"
+              className="w-full font-mono bg-black border border-green-700 px-3 py-3 text-green-300 outline-none placeholder:text-green-800 focus:border-green-500"
             />
 
             <div className="flex items-center gap-3">
-              <button onClick={submit} disabled={retrieving || expanded} className="rounded-xl border border-slate-700 hover:bg-slate-900 transition px-4 py-2 font-mono text-sm">
+              <button onClick={submit} disabled={retrieving} className="border border-green-700 bg-black hover:bg-green-900 transition px-4 py-2 font-mono text-sm text-green-300 disabled:opacity-60">
                 SUBMIT
               </button>
               <button
@@ -255,19 +282,19 @@ export default function CorrespondencePage() {
                   setInput("");
                   setStatus("STATUS: Awaiting input.");
                 }}
-                className="rounded-xl border border-slate-800 hover:bg-slate-900 transition px-4 py-2 font-mono text-sm text-slate-300"
+                className="border border-green-800 bg-black hover:bg-green-950 transition px-4 py-2 font-mono text-sm text-green-700 disabled:opacity-60"
               >
                 CLEAR
               </button>
             </div>
 
-            <div className="font-mono text-xs text-slate-400">{status}</div>
+            <div className="text-xs text-green-500">{status}</div>
             {retrieving && (
               <div className="mt-3 space-y-2">
-                <div className="w-full border border-slate-800 h-4 bg-black/50">
-                  <div className="bg-emerald-500 h-4" style={{ width: `${progress}%` }} />
+                <div className="w-full border border-green-700 h-4 bg-black">
+                  <div className="bg-green-600 h-4" style={{ width: `${progress}%` }} />
                 </div>
-                <div className="font-mono text-xs text-slate-400">{progress}%</div>
+                <div className="text-xs text-green-500">{progress}%</div>
               </div>
             )}
           </div>
@@ -275,7 +302,12 @@ export default function CorrespondencePage() {
           <div className="text-xs text-slate-500">Prototype note: unlock state is stored locally in your browser.</div>
         </section>
 
-        <div className="pt-2">
+
+  
+</aside>
+</div>
+
+<div className="pt-2">
           <CaseNavLinks
             caseHref="/cases/silent-switchboard"
             contextHref="/cases/silent-switchboard/case-file/evidence-list"
@@ -286,3 +318,5 @@ export default function CorrespondencePage() {
     </main>
   );
 }
+
+
