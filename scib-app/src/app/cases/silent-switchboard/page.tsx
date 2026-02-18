@@ -1,5 +1,6 @@
 ﻿import Image from "next/image";
 import Link from "next/link";
+import CaseNavLinks from "@/components/CaseNavLinks";
 
 function FileRow({
   href,
@@ -64,7 +65,7 @@ export default function SilentSwitchboardCase() {
               <h1 className="text-xl font-semibold">Cold Case File</h1>
             </div>
           </div>
-          <Link href="/" className="text-sm text-slate-300 hover:text-white">Exit</Link>
+          <CaseNavLinks caseHref="/cases/silent-switchboard" contextHref="/investigation-room" contextLabel="Investigation Room" />
         </header>
 
         <section className="rounded-2xl border border-slate-800 bg-slate-900/30 p-6 space-y-6">
@@ -140,18 +141,14 @@ export default function SilentSwitchboardCase() {
           </div>
 
           <div className="flex flex-col sm:flex-row gap-3">
-            <Link
-              href="/login"
-              className="rounded-xl border border-slate-700 hover:bg-slate-900 transition px-4 py-3 font-medium text-center"
-            >
-              Back to Login
-            </Link>
+            <CaseNavLinks caseHref="/cases/silent-switchboard" contextHref="/investigation-room" contextLabel="Investigation Room" />
           </div>
         </section>
       </div>
     </main>
   );
 }
+
 
 
 

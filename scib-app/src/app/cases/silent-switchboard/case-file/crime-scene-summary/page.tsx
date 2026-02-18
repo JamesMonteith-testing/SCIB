@@ -1,5 +1,6 @@
 ﻿import Image from "next/image";
 import Link from "next/link";
+import CaseNavLinks from "@/components/CaseNavLinks";
 
 function Tag({ children }: { children: React.ReactNode }) {
   return (
@@ -79,9 +80,7 @@ export default function Page() {
             >
               Hints
             </a>
-            <Link href="/cases/silent-switchboard" className="text-sm text-slate-300 hover:text-white">
-              Back to Case
-            </Link>
+            <CaseNavLinks caseHref="/cases/silent-switchboard" contextHref="/cases/silent-switchboard" contextLabel="Back to Case" />
           </div>
         </header>
 
@@ -233,3 +232,4 @@ export default function Page() {
     </main>
   );
 }
+
