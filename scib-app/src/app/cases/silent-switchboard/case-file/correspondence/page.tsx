@@ -71,6 +71,8 @@ function normalizeKey(input: string) {
 export default function CorrespondencePage() {
   const [input, setInput] = useState("");
   const [status, setStatus] = useState("STATUS: Awaiting input.");
+  const [retrieving, setRetrieving] = useState(false);
+  const [progress, setProgress] = useState(0);
   const [expanded, setExpanded] = useState(false);
 
   const expected = "HETTIE050389";
@@ -83,6 +85,35 @@ export default function CorrespondencePage() {
     } catch {}
   }, []);
 
+  function startRetrieval() {
+    setRetrieving(true);
+    setProgress(0);
+    setStatus("STATUS: Reference verified. Retrieving archive...");
+
+    // ~3 seconds, stepped / mechanical
+    const steps = [8, 16, 27, 39, 52, 64, 73, 82, 90, 96, 100];
+    let i = 0;
+
+    const interval = setInterval(() => {
+      setProgress(steps[i]);
+      i++;
+
+      if (i >= steps.length) {
+        clearInterval(interval);
+        setTimeout(() => {
+          try {
+            localStorage.setItem(STORAGE_KEY_EXPANDED, "true");
+            localStorage.setItem(STORAGE_KEY_DELETED, "true");
+          } catch {}
+          setExpanded(true);
+          setRetrieving(false);
+          setStatus("STATUS: Archive restored. Additional messages are now visible.");
+          setInput("");
+        }, 350);
+      }
+    }, 260);
+  }
+
   function submit() {
     const n = normalizeKey(input);
 
@@ -92,13 +123,11 @@ export default function CorrespondencePage() {
     }
 
     if (n === expected) {
-      try {
-        localStorage.setItem(STORAGE_KEY_EXPANDED, "true");
-        localStorage.setItem(STORAGE_KEY_DELETED, "true");
-      } catch {}
-      setExpanded(true);
-      setStatus("STATUS: Archive restored. Additional messages are now visible.");
-      setInput("");
+      if (expanded) {
+        setStatus("STATUS: Archive already restored. Additional messages are now visible.");
+        return;
+      }
+      startRetrieval();
       return;
     }
 
@@ -212,13 +241,13 @@ export default function CorrespondencePage() {
 
             <input
               value={input}
-              onChange={(e) => setInput(e.target.value)}
+              onChange={(e) => setInput(e.target.value)} disabled={retrieving || expanded}
               placeholder="e.g. HETTIE050389"
               className="w-full font-mono rounded-lg bg-black/50 border border-slate-800 px-3 py-3 text-slate-100 outline-none focus:border-slate-600"
             />
 
             <div className="flex items-center gap-3">
-              <button onClick={submit} className="rounded-xl border border-slate-700 hover:bg-slate-900 transition px-4 py-2 font-mono text-sm">
+              <button onClick={submit} disabled={retrieving || expanded} className="rounded-xl border border-slate-700 hover:bg-slate-900 transition px-4 py-2 font-mono text-sm">
                 SUBMIT
               </button>
               <button
@@ -233,6 +262,14 @@ export default function CorrespondencePage() {
             </div>
 
             <div className="font-mono text-xs text-slate-400">{status}</div>
+            {retrieving && (
+              <div className="mt-3 space-y-2">
+                <div className="w-full border border-slate-800 h-4 bg-black/50">
+                  <div className="bg-emerald-500 h-4" style={{ width: `${progress}%` }} />
+                </div>
+                <div className="font-mono text-xs text-slate-400">{progress}%</div>
+              </div>
+            )}
           </div>
 
           <div className="text-xs text-slate-500">Prototype note: unlock state is stored locally in your browser.</div>
