@@ -1,5 +1,6 @@
 ﻿import Image from "next/image";
 import Link from "next/link";
+import { cookies } from "next/headers";
 
 function Tag({ children }: { children: React.ReactNode }) {
   return (
@@ -34,7 +35,6 @@ function CaseRow({
       <div className="flex items-start justify-between gap-4">
         <div className="space-y-2">
           <div className="text-xs text-slate-400">{caseId}</div>
-
           <div
             className={[
               "text-xl font-semibold",
@@ -43,9 +43,7 @@ function CaseRow({
           >
             {title}
           </div>
-
           <div className="text-sm text-slate-300">{subtitle}</div>
-
           <div className="flex flex-wrap gap-2 pt-1">
             {unlocked ? <Tag>UNLOCKED</Tag> : <Tag>LOCKED</Tag>}
             <Tag>Mode: Collaborative</Tag>
@@ -60,7 +58,6 @@ function CaseRow({
                 ? "border-emerald-700/40 bg-emerald-950/20 text-emerald-200"
                 : "border-slate-700 bg-slate-950/40 text-slate-400",
             ].join(" ")}
-            title={unlocked ? "Unlocked" : "Locked"}
           >
             {unlocked ? "🔓" : "🔒"}
           </div>
@@ -95,9 +92,14 @@ function CaseRow({
   );
 }
 
-export default function WelcomePage() {
-  // Prototype rule for now:
-  // Case 01 is unlocked; others are locked until we wire solved-state later.
+export default async function WelcomePage() {
+  const jar = await cookies();
+
+  const name =
+    jar.get("scib_name_v1")?.value ?? "Detective (Unregistered)";
+  const badge =
+    jar.get("scib_badge_v1")?.value ?? "SCIB-0000";
+
   const case01Unlocked = true;
 
   return (
@@ -123,15 +125,14 @@ export default function WelcomePage() {
           </Link>
         </header>
 
-        {/* Existing welcome panel */}
         <section className="rounded-2xl border border-slate-800 bg-slate-900/30 p-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
             <div className="space-y-3">
               <div className="text-sm text-slate-300">Signed in as</div>
-              <div className="text-2xl font-semibold">Detective Kelly</div>
+              <div className="text-2xl font-semibold">{name}</div>
               <div className="text-slate-300">
                 Badge Number:{" "}
-                <span className="font-medium text-slate-100">SCIB-2972</span>
+                <span className="font-medium text-slate-100">{badge}</span>
               </div>
 
               <div className="pt-4 space-y-3">
@@ -164,7 +165,7 @@ export default function WelcomePage() {
               <div className="relative w-full overflow-hidden rounded-xl border border-slate-800 bg-black">
                 <Image
                   src="/brand/detective-kelly-badge.png"
-                  alt="Detective Kelly SCIB ID"
+                  alt="SCIB ID card template"
                   width={1400}
                   height={900}
                   className="w-full h-auto"
@@ -180,7 +181,6 @@ export default function WelcomePage() {
           </div>
         </section>
 
-        {/* Reintroduced case board stubs */}
         <section className="rounded-2xl border border-slate-800 bg-slate-900/30 p-6 space-y-4">
           <div className="flex items-center justify-between">
             <div className="text-sm font-semibold">Case List</div>
