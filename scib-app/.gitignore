@@ -43,3 +43,6 @@ next-env.d.ts
 # SCIB runtime room state (local only)
 data/room/case01.json
 
+
+# Backup files
+*.bak_*
