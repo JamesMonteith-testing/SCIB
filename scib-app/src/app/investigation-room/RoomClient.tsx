@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -128,8 +128,11 @@ function ClueBlock({ id }: { id: string }) {
   return <div className="pt-2 text-xs text-slate-500">{clue}</div>;
 }
 
-export default function RoomClient() {
-  const [username, setUsername] = useState<string>("UNIDENTIFIED");
+export default function RoomClient({ initialUsername }: { initialUsername: string }) {
+  const [username, setUsername] = useState<string>(() => {
+    const u = (initialUsername || "").trim();
+    return u ? u : "UNIDENTIFIED";
+  });
 
   const [posts, setPosts] = useState<RoomPost[]>([]);
   const [text, setText] = useState("");
@@ -202,9 +205,16 @@ export default function RoomClient() {
   }
 
   useEffect(() => {
+    // Mirror the authoritative server identity into localStorage so any legacy UI reads remain consistent
     try {
-      const v = localStorage.getItem("scib_username_display_v1");
-      if (v) setUsername(v);
+      const u = (initialUsername || "").trim();
+      if (u) {
+        localStorage.setItem("scib_username_display_v1", u);
+        setUsername(u);
+      } else {
+        const v = localStorage.getItem("scib_username_display_v1");
+        if (v) setUsername(v);
+      }
     } catch {}
 
     refreshUnlocks();
@@ -233,6 +243,7 @@ export default function RoomClient() {
 
     function onStorage(e: StorageEvent) {
       if (e.key === UNLOCK_STORE_KEY) refreshUnlocks();
+      if (e.key === "scib_username_display_v1" && e.newValue) setUsername(e.newValue);
     }
     window.addEventListener("storage", onStorage);
 
