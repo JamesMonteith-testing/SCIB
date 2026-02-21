@@ -1,4 +1,4 @@
-﻿import Image from "next/image";
+import Image from "next/image";
 import Link from "next/link";
 
 export default function Home() {
@@ -24,7 +24,7 @@ export default function Home() {
           <div className="w-full grid grid-cols-1 gap-3 mt-4">
             <Link
               href="/login"
-              className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 transition px-4 py-3 font-medium"
+              className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 transition px-4 py-3 font-semibold"
             >
               Log In
             </Link>
@@ -34,13 +34,6 @@ export default function Home() {
               className="w-full rounded-xl bg-slate-800 hover:bg-slate-700 transition px-4 py-3 font-medium"
             >
               Register
-            </Link>
-
-            <Link
-              href="/join"
-              className="w-full rounded-xl border border-slate-700 hover:bg-slate-900 transition px-4 py-3 font-medium"
-            >
-              Join Case Room
             </Link>
           </div>
 

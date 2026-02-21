@@ -152,8 +152,7 @@ export default async function WelcomePage() {
               </div>
 
               <p className="text-xs text-slate-500 pt-2">
-                Prototype: this screen will later load your real badge details
-                from the database.
+                Prototype: ID card now reflects registered detective.
               </p>
             </div>
 
@@ -163,19 +162,37 @@ export default async function WelcomePage() {
               </div>
 
               <div className="relative w-full overflow-hidden rounded-xl border border-slate-800 bg-black">
+
                 <Image
                   src="/brand/detective-kelly-badge.png"
-                  alt="SCIB ID card template"
+                  alt="SCIB ID template"
                   width={1400}
                   height={900}
-                  className="w-full h-auto"
+                  className="w-full h-auto opacity-90"
                   priority
                 />
+
+                {/* Overlay dynamic identity */}
+                <div className="absolute inset-0 flex flex-col justify-center items-center text-center pointer-events-none">
+                  <div className="text-sm text-slate-400 tracking-widest">
+                    BADGE NUMBER
+                  </div>
+                  <div className="text-2xl font-bold text-amber-300">
+                    {badge}
+                  </div>
+
+                  <div className="mt-4 text-sm text-slate-400 tracking-widest">
+                    DETECTIVE
+                  </div>
+                  <div className="text-3xl font-semibold text-amber-200">
+                    {name}
+                  </div>
+                </div>
+
               </div>
 
               <p className="text-xs text-slate-500 pt-3">
-                This is currently a static image template. Next phase: generate
-                this dynamically per user.
+                Next phase: generate fully dynamic badge artwork per detective.
               </p>
             </div>
           </div>

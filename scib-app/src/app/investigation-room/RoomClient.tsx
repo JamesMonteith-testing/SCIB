@@ -129,10 +129,9 @@ function ClueBlock({ id }: { id: string }) {
 }
 
 export default function RoomClient({ initialUsername }: { initialUsername: string }) {
-  const [username, setUsername] = useState<string>(() => {
-    const u = (initialUsername || "").trim();
-    return u ? u : "UNIDENTIFIED";
-  });
+  // Identity MUST be sourced from the server (cookies are not reliably readable client-side in all modes),
+  // so we accept it as a prop and keep it stable for the whole session.
+  const [username] = useState<string>(initialUsername);
 
   const [posts, setPosts] = useState<RoomPost[]>([]);
   const [text, setText] = useState("");
@@ -205,18 +204,6 @@ export default function RoomClient({ initialUsername }: { initialUsername: strin
   }
 
   useEffect(() => {
-    // Mirror the authoritative server identity into localStorage so any legacy UI reads remain consistent
-    try {
-      const u = (initialUsername || "").trim();
-      if (u) {
-        localStorage.setItem("scib_username_display_v1", u);
-        setUsername(u);
-      } else {
-        const v = localStorage.getItem("scib_username_display_v1");
-        if (v) setUsername(v);
-      }
-    } catch {}
-
     refreshUnlocks();
     loadInitial();
 
@@ -243,7 +230,6 @@ export default function RoomClient({ initialUsername }: { initialUsername: strin
 
     function onStorage(e: StorageEvent) {
       if (e.key === UNLOCK_STORE_KEY) refreshUnlocks();
-      if (e.key === "scib_username_display_v1" && e.newValue) setUsername(e.newValue);
     }
     window.addEventListener("storage", onStorage);
 
@@ -387,7 +373,7 @@ export default function RoomClient({ initialUsername }: { initialUsername: strin
             <input
               value={unlockCode}
               onChange={(e) => setUnlockCode(e.target.value)}
-              placeholder='Enter solution (e.g. MKELLS)'
+              placeholder="Enter solution (e.g. MKELLS)"
               className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-4 py-3 outline-none focus:border-slate-600"
             />
             <button
