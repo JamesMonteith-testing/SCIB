@@ -144,6 +144,13 @@ export default async function WelcomePage() {
                 </Link>
 
                 <Link
+                  href="/logout"
+                  className="block rounded-xl border border-slate-700 hover:bg-slate-900 transition px-4 py-3 font-medium text-center"
+                >
+                  Switch detective
+                </Link>
+
+                <Link
                   href="/login"
                   className="block rounded-xl border border-slate-700 hover:bg-slate-900 transition px-4 py-3 font-medium text-center"
                 >
@@ -241,3 +248,4 @@ export default async function WelcomePage() {
     </main>
   );
 }
+
