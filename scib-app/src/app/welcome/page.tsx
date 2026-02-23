@@ -95,10 +95,8 @@ function CaseRow({
 export default async function WelcomePage() {
   const jar = await cookies();
 
-  const name =
-    jar.get("scib_name_v1")?.value ?? "Detective (Unregistered)";
-  const badge =
-    jar.get("scib_badge_v1")?.value ?? "SCIB-0000";
+  const name = jar.get("scib_name_v1")?.value ?? "Detective (Unregistered)";
+  const badge = jar.get("scib_badge_v1")?.value ?? "SCIB-0000";
 
   const case01Unlocked = true;
 
@@ -120,56 +118,46 @@ export default async function WelcomePage() {
             </div>
           </div>
 
-          <Link href="/" className="text-sm text-slate-300 hover:text-white">
-            Exit
+          <Link href="/logout" className="text-sm text-slate-500 hover:text-slate-200">
+            Sign out
           </Link>
         </header>
 
         <section className="rounded-2xl border border-slate-800 bg-slate-900/30 p-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-            <div className="space-y-3">
-              <div className="text-sm text-slate-300">Signed in as</div>
-              <div className="text-2xl font-semibold">{name}</div>
+            {/* Left: Access status (no clutter) */}
+            <div className="space-y-4">
+              <div className="inline-flex items-center rounded-full border border-emerald-700/40 bg-emerald-950/15 px-3 py-1 text-xs text-emerald-200">
+                ACCESS GRANTED
+              </div>
+
+              <div className="space-y-1">
+                <div className="text-sm text-slate-400">Detective</div>
+                <div className="text-2xl font-semibold">{name}</div>
+              </div>
+
               <div className="text-slate-300">
                 Badge Number:{" "}
                 <span className="font-medium text-slate-100">{badge}</span>
               </div>
 
-              <div className="pt-4 space-y-3">
-                <Link
-                  href="/cases"
-                  className="block rounded-xl bg-blue-600 hover:bg-blue-500 transition px-4 py-3 font-medium text-center"
-                >
-                  Enter SCIB Database
-                </Link>
-
-                <Link
-                  href="/logout"
-                  className="block rounded-xl border border-slate-700 hover:bg-slate-900 transition px-4 py-3 font-medium text-center"
-                >
-                  Switch detective
-                </Link>
-
-                <Link
-                  href="/login"
-                  className="block rounded-xl border border-slate-700 hover:bg-slate-900 transition px-4 py-3 font-medium text-center"
-                >
-                  Back to Login
-                </Link>
+              <div className="text-sm text-slate-400">
+                Clearance Level:{" "}
+                <span className="text-slate-200 font-medium">1</span>
               </div>
 
               <p className="text-xs text-slate-500 pt-2">
-                Prototype: ID card now reflects registered detective.
+                Select an assigned investigation below to begin.
               </p>
             </div>
 
+            {/* Right: Badge panel (kept as-is) */}
             <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
               <div className="text-xs text-slate-400 pb-3">
                 SCIB Identification
               </div>
 
               <div className="relative w-full overflow-hidden rounded-xl border border-slate-800 bg-black">
-
                 <Image
                   src="/brand/detective-kelly-badge.png"
                   alt="SCIB ID template"
@@ -195,7 +183,6 @@ export default async function WelcomePage() {
                     {name}
                   </div>
                 </div>
-
               </div>
 
               <p className="text-xs text-slate-500 pt-3">
@@ -207,7 +194,7 @@ export default async function WelcomePage() {
 
         <section className="rounded-2xl border border-slate-800 bg-slate-900/30 p-6 space-y-4">
           <div className="flex items-center justify-between">
-            <div className="text-sm font-semibold">Case List</div>
+            <div className="text-sm font-semibold">Assigned Investigations</div>
             <div className="text-xs text-slate-500">
               Click an unlocked case to enter
             </div>
@@ -248,4 +235,3 @@ export default async function WelcomePage() {
     </main>
   );
 }
-

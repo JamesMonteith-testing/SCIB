@@ -46,7 +46,7 @@ export default function RegisterProviderPage() {
     setCookie("scib_badge_v1", badge);
     setCookie("scib_provider_v1", provider);
 
-    router.push("/welcome");
+    router.push("/case-briefing");
     router.refresh();
   }
 
