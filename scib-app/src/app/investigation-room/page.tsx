@@ -4,6 +4,12 @@ import RoomClient from "./RoomClient";
 
 export const dynamic = "force-dynamic";
 
+function cleanInstanceId(input: string) {
+  const raw = (input || "").trim();
+  const safe = raw.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 48);
+  return safe || "DEFAULT";
+}
+
 export default async function Page() {
   const jar = await cookies();
 
@@ -16,13 +22,15 @@ export default async function Page() {
     redirect("/login");
   }
 
-  // Pass identity details to client explicitly
+  // Phase 1: isolate room instances by badge (stable per identity)
+  const instanceId = cleanInstanceId(badge || "DEFAULT");
+
   return (
     <RoomClient
       initialUsername={name}
       initialBadge={badge ?? ""}
       initialProvider={provider ?? ""}
+      initialInstanceId={instanceId}
     />
   );
 }
-

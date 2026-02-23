@@ -1,5 +1,6 @@
 ﻿import { NextResponse } from "next/server";
-import { roomBus } from "@/lib/roomBus";
+import { cookies } from "next/headers";
+import { getRoomBus } from "@/lib/roomBus";
 
 export const dynamic = "force-dynamic";
 
@@ -7,24 +8,42 @@ function sseFormat(event: string, data: any) {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
 
-export async function GET() {
+export async function GET(req: Request) {
+  const url = new URL(req.url);
+  const queryInstance = url.searchParams.get("instance");
+
+  const jar = await cookies();
+  const cookieInstance = jar.get("scib_badge_v1")?.value;
+
+  const instanceId =
+    (queryInstance || cookieInstance || "DEFAULT")
+      .replace(/[^a-zA-Z0-9_-]/g, "")
+      .slice(0, 48) || "DEFAULT";
+
+  const bus = getRoomBus(instanceId);
+
   const stream = new ReadableStream({
     start(controller) {
       const encoder = new TextEncoder();
 
-      // initial hello so the client knows the stream is live
-      controller.enqueue(encoder.encode(sseFormat("hello", { ok: true, ts: Date.now() })));
+      controller.enqueue(
+        encoder.encode(
+          sseFormat("hello", { ok: true, ts: Date.now(), instanceId })
+        )
+      );
 
-      const unsubscribe = roomBus.subscribe((evt) => {
-        controller.enqueue(encoder.encode(sseFormat(evt.type, evt.payload)));
+      const unsubscribe = bus.subscribe((evt) => {
+        controller.enqueue(
+          encoder.encode(sseFormat(evt.type, evt.payload))
+        );
       });
 
-      // keep-alive ping every 20s (helps proxies)
       const timer = setInterval(() => {
-        controller.enqueue(encoder.encode(sseFormat("ping", { ts: Date.now() })));
+        controller.enqueue(
+          encoder.encode(sseFormat("ping", { ts: Date.now() }))
+        );
       }, 20000);
 
-      // If client disconnects, Next will cancel the stream and call cancel()
       (controller as any).__cleanup = () => {
         clearInterval(timer);
         unsubscribe();

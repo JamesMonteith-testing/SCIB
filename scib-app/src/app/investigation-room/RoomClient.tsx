@@ -45,7 +45,11 @@ function StatusPill({ state }: { state: "available" | "locked" }) {
   );
 }
 
-const UNLOCK_STORE_KEY = "scib_case01_unlocked_evidence_v1";
+function cleanInstanceId(input: string) {
+  const raw = (input || "").trim();
+  const safe = raw.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 48);
+  return safe || "DEFAULT";
+}
 
 function normalizeCode(raw: string) {
   return (raw || "")
@@ -57,9 +61,9 @@ function normalizeCode(raw: string) {
     .trim();
 }
 
-function readUnlocked(): string[] {
+function readUnlocked(key: string): string[] {
   try {
-    const raw = localStorage.getItem(UNLOCK_STORE_KEY);
+    const raw = localStorage.getItem(key);
     if (!raw) return ["E-01", "E-02"];
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.every((x) => typeof x === "string")) {
@@ -72,16 +76,16 @@ function readUnlocked(): string[] {
   }
 }
 
-function writeUnlocked(ids: string[]) {
+function writeUnlocked(key: string, ids: string[]) {
   const base = new Set(["E-01", "E-02", ...ids.map((s) => s.toUpperCase())]);
-  localStorage.setItem(UNLOCK_STORE_KEY, JSON.stringify(Array.from(base)));
+  localStorage.setItem(key, JSON.stringify(Array.from(base)));
 }
 
 // Codes -> bundles (local prototype).
 // - MKELLS (from E-01) unlocks E-05 + E-06
 // - WHX/OPS 1991-022-03 unlocks E-03
 // - DON'T TRUST THE SWITCHBOARD unlocks E-04
-function applyEvidenceUnlock(codeRaw: string): { ok: boolean; unlocked: string[]; message: string } {
+function applyEvidenceUnlock(unlockStoreKey: string, codeRaw: string): { ok: boolean; unlocked: string[]; message: string } {
   const code = normalizeCode(codeRaw);
 
   if (!code) return { ok: false, unlocked: [], message: "Enter a solution." };
@@ -104,9 +108,9 @@ function applyEvidenceUnlock(codeRaw: string): { ok: boolean; unlocked: string[]
     return { ok: false, unlocked: [], message: "That is not correct." };
   }
 
-  const current = readUnlocked();
+  const current = readUnlocked(unlockStoreKey);
   const next = Array.from(new Set([...current, ...unlocks]));
-  writeUnlocked(next);
+  writeUnlocked(unlockStoreKey, next);
 
   return { ok: true, unlocked: unlocks, message: `Unlocked: ${unlocks.join(", ")}` };
 }
@@ -142,19 +146,26 @@ export default function RoomClient({
   initialUsername,
   initialBadge,
   initialProvider,
+  initialInstanceId,
 }: {
   initialUsername: string;
   initialBadge: string;
   initialProvider: string;
+  initialInstanceId: string;
 }) {
   const [username] = useState<string>(initialUsername);
   const [badge] = useState<string>(initialBadge || "");
   const [provider] = useState<string>(initialProvider || "");
+  const [instanceId] = useState<string>(cleanInstanceId(initialInstanceId || "DEFAULT"));
 
   const providerText = useMemo(() => {
     const p = (provider || "").toLowerCase().trim();
     return isProvider(p) ? providerLabel(p) : "";
   }, [provider]);
+
+  const unlockStoreKey = useMemo(() => {
+    return `scib_case01_unlocked_evidence_${instanceId}_v1`;
+  }, [instanceId]);
 
   const [posts, setPosts] = useState<RoomPost[]>([]);
   const [text, setText] = useState("");
@@ -167,15 +178,15 @@ export default function RoomClient({
 
   const streamRef = useRef<EventSource | null>(null);
 
-  const caseMeta = useMemo(
-    () => ({
+  const caseMeta = useMemo(() => {
+    const qs = `?instance=${encodeURIComponent(instanceId)}`;
+    return {
       title: "Case 01 - The Silent Switchboard",
       caseId: "SCIB-CC-1991-022",
-      roomApi: "/api/room/case01",
-      roomStream: "/api/room/case01/stream",
-    }),
-    []
-  );
+      roomApi: `/api/room/case01${qs}`,
+      roomStream: `/api/room/case01/stream${qs}`,
+    };
+  }, [instanceId]);
 
   const evidenceCatalog = useMemo(
     () => [
@@ -223,7 +234,7 @@ export default function RoomClient({
   }
 
   function refreshUnlocks() {
-    setUnlockedEvidence(readUnlocked());
+    setUnlockedEvidence(readUnlocked(unlockStoreKey));
   }
 
   useEffect(() => {
@@ -252,7 +263,7 @@ export default function RoomClient({
     }
 
     function onStorage(e: StorageEvent) {
-      if (e.key === UNLOCK_STORE_KEY) refreshUnlocks();
+      if (e.key === unlockStoreKey) refreshUnlocks();
     }
     window.addEventListener("storage", onStorage);
 
@@ -264,7 +275,7 @@ export default function RoomClient({
       window.removeEventListener("storage", onStorage);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [caseMeta.roomStream, unlockStoreKey]);
 
   async function post() {
     const t = text.trim();
@@ -296,7 +307,7 @@ export default function RoomClient({
   }
 
   function submitUnlock() {
-    const result = applyEvidenceUnlock(unlockCode);
+    const result = applyEvidenceUnlock(unlockStoreKey, unlockCode);
     setUnlockMsg(result.message);
     if (result.ok) {
       refreshUnlocks();
@@ -437,9 +448,7 @@ export default function RoomClient({
                         <span className="font-mono text-slate-300">{e.id}</span>
                       )}
                     </div>
-                    <div className="text-xs text-slate-400 truncate">
-                      {e.state === "available" ? e.label : "SEALED REGISTER ENTRY"}
-                    </div>
+                    <div className="text-xs text-slate-400 truncate">{e.state === "available" ? e.label : "SEALED REGISTER ENTRY"}</div>
                     {e.state === "locked" ? <ClueBlock id={e.id} /> : null}
                   </div>
                   <StatusPill state={e.state} />
@@ -526,4 +535,3 @@ export default function RoomClient({
     </main>
   );
 }
-
