@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -128,10 +128,33 @@ function ClueBlock({ id }: { id: string }) {
   return <div className="pt-2 text-xs text-slate-500">{clue}</div>;
 }
 
-export default function RoomClient({ initialUsername }: { initialUsername: string }) {
-  // Identity MUST be sourced from the server (cookies are not reliably readable client-side in all modes),
-  // so we accept it as a prop and keep it stable for the whole session.
+type Provider = "linkedin" | "facebook" | "instagram";
+
+function isProvider(v: string | undefined): v is Provider {
+  return v === "linkedin" || v === "facebook" || v === "instagram";
+}
+
+function providerLabel(p: Provider) {
+  return p === "linkedin" ? "LinkedIn" : p === "facebook" ? "Facebook" : "Instagram";
+}
+
+export default function RoomClient({
+  initialUsername,
+  initialBadge,
+  initialProvider,
+}: {
+  initialUsername: string;
+  initialBadge: string;
+  initialProvider: string;
+}) {
   const [username] = useState<string>(initialUsername);
+  const [badge] = useState<string>(initialBadge || "");
+  const [provider] = useState<string>(initialProvider || "");
+
+  const providerText = useMemo(() => {
+    const p = (provider || "").toLowerCase().trim();
+    return isProvider(p) ? providerLabel(p) : "";
+  }, [provider]);
 
   const [posts, setPosts] = useState<RoomPost[]>([]);
   const [text, setText] = useState("");
@@ -146,7 +169,7 @@ export default function RoomClient({ initialUsername }: { initialUsername: strin
 
   const caseMeta = useMemo(
     () => ({
-      title: "Case 01 — The Silent Switchboard",
+      title: "Case 01 - The Silent Switchboard",
       caseId: "SCIB-CC-1991-022",
       roomApi: "/api/room/case01",
       roomStream: "/api/room/case01/stream",
@@ -290,7 +313,7 @@ export default function RoomClient({ initialUsername }: { initialUsername: strin
             <div>
               <div className="text-xs text-slate-400">SCIB INVESTIGATION ROOM</div>
               <h1 className="text-xl font-semibold">Investigation Room</h1>
-              <p className="text-sm text-slate-300">Realtime findings thread • Case 01</p>
+              <p className="text-sm text-slate-300">Realtime findings thread - Case 01</p>
             </div>
           </div>
 
@@ -311,16 +334,19 @@ export default function RoomClient({ initialUsername }: { initialUsername: strin
           <Panel title="Detective Identity">
             <div className="flex items-center gap-4">
               <Image src="/brand/scib-badge.png" alt="Badge" width={56} height={56} />
-              <div>
-                <div className="font-semibold">{username}</div>
-                <div className="text-sm text-slate-300">Tester identity (cookie-based)</div>
-                <div className="text-xs text-slate-400">Stored on this device</div>
+              <div className="min-w-0">
+                <div className="font-semibold truncate">{username}</div>
+                <div className="text-sm text-slate-300">
+                  Badge: <span className="font-mono text-slate-200">{badge || "—"}</span>
+                </div>
+                <div className="text-xs text-slate-400">{providerText ? `Provider: ${providerText}` : "Provider: —"}</div>
               </div>
             </div>
+
             <div className="pt-3 text-xs text-slate-500">
-              To change identity, return to{" "}
-              <Link className="underline underline-offset-4 decoration-slate-600 hover:decoration-slate-300" href="/join">
-                Join Case Room
+              Need to switch identity?{" "}
+              <Link className="underline underline-offset-4 decoration-slate-600 hover:decoration-slate-300" href="/logout">
+                Sign out
               </Link>
               .
             </div>
@@ -364,7 +390,7 @@ export default function RoomClient({ initialUsername }: { initialUsername: strin
           </Panel>
         </div>
 
-        <Panel title="Case Access Console — Evidence Unlock">
+        <Panel title="Case Access Console - Evidence Unlock">
           <div className="text-sm text-slate-200">
             If an item is sealed, solve the clue and submit the solution here. Successful solutions unlock the next material on this device.
           </div>
@@ -394,7 +420,7 @@ export default function RoomClient({ initialUsername }: { initialUsername: strin
         </Panel>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <Panel title="Case Access — Evidence">
+          <Panel title="Case Access - Evidence">
             <div className="space-y-2">
               {evidenceItems.map((e) => (
                 <div
@@ -422,7 +448,7 @@ export default function RoomClient({ initialUsername }: { initialUsername: strin
             </div>
           </Panel>
 
-          <Panel title="Case Access — Recovered Materials">
+          <Panel title="Case Access - Recovered Materials">
             <div className="space-y-2">
               {recoveredItems.map((r) => (
                 <div key={r.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/30 px-4 py-3">
@@ -450,7 +476,7 @@ export default function RoomClient({ initialUsername }: { initialUsername: strin
               <textarea
                 value={text}
                 onChange={(e) => setText(e.target.value)}
-                placeholder="Post your finding for the team… (include evidence links)"
+                placeholder="Post your finding for the team... (include evidence links)"
                 className="w-full bg-transparent outline-none text-sm text-slate-200 placeholder:text-slate-500 min-h-[140px] resize-none"
                 disabled={busy}
               />
@@ -461,7 +487,7 @@ export default function RoomClient({ initialUsername }: { initialUsername: strin
                   disabled={busy}
                   className="rounded-xl border border-slate-700 hover:bg-slate-900 transition px-4 py-2 text-sm font-medium disabled:opacity-60"
                 >
-                  {busy ? "Posting…" : "Post Finding"}
+                  {busy ? "Posting..." : "Post Finding"}
                 </button>
               </div>
             </div>
@@ -500,3 +526,4 @@ export default function RoomClient({ initialUsername }: { initialUsername: strin
     </main>
   );
 }
+

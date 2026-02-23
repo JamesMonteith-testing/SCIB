@@ -54,7 +54,13 @@ export async function GET() {
 
 export async function POST(req: Request) {
   const jar = await cookies();
-  const username = (jar.get("scib_username")?.value || "UNIDENTIFIED").trim().slice(0, 24);
+
+  // Single identity system: use v1 cookie identity only
+  const name = (jar.get("scib_name_v1")?.value || "").trim().slice(0, 24);
+
+  if (!name) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
 
   let body: any = null;
   try {
@@ -72,14 +78,13 @@ export async function POST(req: Request) {
   const post: RoomPost = {
     id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
     ts: Date.now(),
-    who: username,
+    who: name,
     text,
   };
 
   state.posts.push(post);
   await writeState(state);
 
-  // Realtime push
   roomBus.emit({ type: "post", payload: post });
 
   return NextResponse.json({ ok: true, post });
