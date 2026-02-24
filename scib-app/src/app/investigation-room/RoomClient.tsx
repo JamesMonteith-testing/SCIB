@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -55,7 +55,7 @@ function normalizeCode(raw: string) {
   return (raw || "")
     .trim()
     .toUpperCase()
-    .replace(/[’']/g, "'")
+    .replace(/[â€™']/g, "'")
     .replace(/[^A-Z0-9\/\-\+\s']/g, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -170,7 +170,18 @@ export default function RoomClient({
   const [posts, setPosts] = useState<RoomPost[]>([]);
   const [text, setText] = useState("");
   const [busy, setBusy] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
+  const [origin, setOrigin] = useState("");
+  const [copied, setCopied] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+
+  useEffect(() => {
+    try {
+      setOrigin(window.location.origin);
+    } catch {
+      setOrigin("");
+    }
+  }, []);
 
   const [unlockCode, setUnlockCode] = useState("");
   const [unlockMsg, setUnlockMsg] = useState<string | null>(null);
@@ -187,6 +198,24 @@ export default function RoomClient({
       roomStream: `/api/room/case01/stream${qs}`,
     };
   }, [instanceId]);
+
+  const joinPath = useMemo(() => {
+    return `/cases/silent-switchboard/join?code=${encodeURIComponent(instanceId)}`;
+  }, [instanceId]);
+
+  const shareUrl = useMemo(() => {
+    return origin ? `${origin}${joinPath}` : joinPath;
+  }, [origin, joinPath]);
+
+  async function copyShareUrl() {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      window.setTimeout(() => setCopied(false), 1200);
+    } catch {
+      setCopied(false);
+    }
+  }
 
   const evidenceCatalog = useMemo(
     () => [
@@ -348,9 +377,9 @@ export default function RoomClient({
               <div className="min-w-0">
                 <div className="font-semibold truncate">{username}</div>
                 <div className="text-sm text-slate-300">
-                  Badge: <span className="font-mono text-slate-200">{badge || "—"}</span>
+                  Badge: <span className="font-mono text-slate-200">{badge || "â€”"}</span>
                 </div>
-                <div className="text-xs text-slate-400">{providerText ? `Provider: ${providerText}` : "Provider: —"}</div>
+                <div className="text-xs text-slate-400">{providerText ? `Provider: ${providerText}` : "Provider: â€”"}</div>
               </div>
             </div>
 
@@ -394,6 +423,15 @@ export default function RoomClient({
                 Posts loaded: <span className="font-mono">{posts.length}</span>
               </div>
               <div className="text-xs text-slate-500">Realtime stream active. Messages appear instantly.</div>
+
+              <button
+                type="button"
+                onClick={() => setShareOpen(true)}
+                className="mt-3 w-full rounded-xl border border-slate-700 hover:bg-slate-900 transition px-4 py-2 text-sm font-medium"
+              >
+                Share Investigation
+              </button>
+
               {err ? (
                 <div className="rounded-xl border border-red-900/60 bg-red-950/30 px-4 py-3 text-sm text-red-200">{err}</div>
               ) : null}
@@ -531,6 +569,75 @@ export default function RoomClient({
             </div>
           </Panel>
         </div>
+
+        {shareOpen ? (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-6">
+            <button
+              type="button"
+              aria-label="Close share dialog"
+              className="absolute inset-0 bg-black/70"
+              onClick={() => setShareOpen(false)}
+            />
+
+            <div className="relative w-full max-w-lg rounded-2xl border border-slate-800 bg-slate-950 p-6 space-y-4">
+              <div className="flex items-start justify-between gap-4">
+                <div>
+                  <div className="text-xs text-slate-400">SHARE INVESTIGATION</div>
+                  <div className="text-lg font-semibold">Invite up to 3 friends</div>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => setShareOpen(false)}
+                  className="rounded-xl border border-slate-700 hover:bg-slate-900 transition px-3 py-2 text-sm font-medium"
+                >
+                  Close
+                </button>
+              </div>
+
+              <p className="text-sm text-slate-300">
+                Phase 2: this panel will generate a room link you can send via WhatsApp, SMS, or Email.
+              </p>
+
+              <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-4 text-xs text-slate-400">
+                Current instance: <span className="font-mono text-slate-200">{instanceId}</span>
+              </div>
+
+              <div className="space-y-2">
+                <div className="text-xs text-slate-400">Share link</div>
+
+                <div className="flex items-center gap-2">
+                  <input
+                    readOnly
+                    value={shareUrl}
+                    className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-3 py-2 text-xs font-mono text-slate-200 outline-none"
+                    onFocus={(e) => e.currentTarget.select()}
+                  />
+                  <button
+                    type="button"
+                    onClick={copyShareUrl}
+                    className="shrink-0 rounded-xl border border-slate-700 hover:bg-slate-900 transition px-3 py-2 text-sm font-medium"
+                  >
+                    {copied ? "Copied" : "Copy"}
+                  </button>
+                </div>
+
+                <div className="text-xs text-slate-500">
+                  Send this link to friends. It sets the shared instance and redirects into the room.
+                </div>
+
+                <div className="text-xs">
+                  <Link
+                    href={joinPath}
+                    className="underline underline-offset-4 decoration-slate-600 hover:decoration-slate-300 text-slate-300"
+                  >
+                    Open join link
+                  </Link>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : null}
       </div>
     </main>
   );
