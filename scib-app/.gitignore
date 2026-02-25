@@ -46,3 +46,5 @@ data/room/case01.json
 
 # Backup files
 *.bak_*
+
+data/room/
