@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -55,7 +55,7 @@ function normalizeCode(raw: string) {
   return (raw || "")
     .trim()
     .toUpperCase()
-    .replace(/[â€™']/g, "'")
+    .replace(/[Ã¢â‚¬â„¢']/g, "'")
     .replace(/[^A-Z0-9\/\-\+\s']/g, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -377,9 +377,9 @@ export default function RoomClient({
               <div className="min-w-0">
                 <div className="font-semibold truncate">{username}</div>
                 <div className="text-sm text-slate-300">
-                  Badge: <span className="font-mono text-slate-200">{badge || "â€”"}</span>
+                  Badge: <span className="font-mono text-slate-200">{badge || "Ã¢â‚¬â€"}</span>
                 </div>
-                <div className="text-xs text-slate-400">{providerText ? `Provider: ${providerText}` : "Provider: â€”"}</div>
+                <div className="text-xs text-slate-400">{providerText ? `Provider: ${providerText}` : "Provider: Ã¢â‚¬â€"}</div>
               </div>
             </div>
 
@@ -471,27 +471,52 @@ export default function RoomClient({
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Panel title="Case Access - Evidence">
             <div className="space-y-2">
-              {evidenceItems.map((e) => (
-                <div
-                  key={e.id}
-                  className="flex items-start justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/30 px-4 py-3"
-                >
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium">
-                      {e.state === "available" ? (
-                        <Link className="underline underline-offset-4 decoration-slate-700 hover:decoration-slate-300" href={e.href}>
-                          {e.id}
-                        </Link>
-                      ) : (
-                        <span className="font-mono text-slate-300">{e.id}</span>
-                      )}
-                    </div>
-                    <div className="text-xs text-slate-400 truncate">{e.state === "available" ? e.label : "SEALED REGISTER ENTRY"}</div>
-                    {e.state === "locked" ? <ClueBlock id={e.id} /> : null}
-                  </div>
-                  <StatusPill state={e.state} />
-                </div>
-              ))}
+              {evidenceItems.map((e) => {
+  const card = (
+    <div
+      className={[
+        "flex items-start justify-between gap-3 rounded-xl border px-4 py-3 transition",
+        e.state === "available"
+          ? "border-slate-700 bg-slate-950/40 hover:bg-slate-900 cursor-pointer"
+          : "border-slate-800 bg-slate-950/30",
+      ].join(" ")}
+    >
+      <div className="min-w-0">
+        <div className="text-sm font-medium">
+          <span
+            className={
+              e.state === "available"
+                ? "underline underline-offset-4 decoration-slate-700 hover:decoration-slate-300"
+                : "font-mono text-slate-300"
+            }
+          >
+            {e.id}
+          </span>
+        </div>
+        <div className="text-xs text-slate-400 truncate">
+          {e.state === "available" ? e.label : "SEALED REGISTER ENTRY"}
+        </div>
+        {e.state === "locked" ? <ClueBlock id={e.id} /> : null}
+      </div>
+
+      <StatusPill state={e.state} />
+    </div>
+  );
+
+  if (e.state === "available") {
+    return (
+      <Link key={e.id} href={e.href} className="block">
+        {card}
+      </Link>
+    );
+  }
+
+  return (
+    <div key={e.id}>
+      {card}
+    </div>
+  );
+})}
             </div>
           </Panel>
 
