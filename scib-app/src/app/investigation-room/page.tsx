@@ -15,15 +15,16 @@ export default async function Page() {
 
   const name = jar.get("scib_name_v1")?.value;
   const badge = jar.get("scib_badge_v1")?.value;
+  const shared = jar.get("scib_case01_instance_v1")?.value;
   const provider = jar.get("scib_provider_v1")?.value;
 
-  // Require v1 cookie identity for room access (single identity system)
+  // Identity still required
   if (!name || !name.trim()) {
     redirect("/login");
   }
 
-  // Phase 1: isolate room instances by badge (stable per identity)
-  const instanceId = cleanInstanceId(badge || "DEFAULT");
+  // Phase 2: shared override > badge > default
+  const instanceId = cleanInstanceId(shared || badge || "DEFAULT");
 
   return (
     <RoomClient

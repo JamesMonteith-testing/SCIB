@@ -25,12 +25,7 @@ function cleanInstanceId(input: string) {
 }
 
 function getDataPath(instanceId: string) {
-  return path.join(
-    process.cwd(),
-    "data",
-    "room",
-    `case01.${instanceId}.json`
-  );
+  return path.join(process.cwd(), "data", "room", `case01.${instanceId}.json`);
 }
 
 async function readState(instanceId: string): Promise<RoomState> {
@@ -67,10 +62,11 @@ export async function GET(req: Request) {
   const queryInstance = url.searchParams.get("instance");
 
   const jar = await cookies();
-  const cookieInstance = jar.get("scib_badge_v1")?.value;
+  const sharedInstance = jar.get("scib_case01_instance_v1")?.value;
+  const badgeInstance = jar.get("scib_badge_v1")?.value;
 
   const instanceId = cleanInstanceId(
-    queryInstance || cookieInstance || "DEFAULT"
+    queryInstance || sharedInstance || badgeInstance || "DEFAULT"
   );
 
   const state = await readState(instanceId);
@@ -84,15 +80,22 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
+  const url = new URL(req.url);
+  const queryInstance = url.searchParams.get("instance");
+
   const jar = await cookies();
   const name = (jar.get("scib_name_v1")?.value || "").trim().slice(0, 24);
-  const badge = jar.get("scib_badge_v1")?.value;
+  const sharedInstance = jar.get("scib_case01_instance_v1")?.value;
+  const badgeInstance = jar.get("scib_badge_v1")?.value;
 
-  if (!name || !badge) {
+  // Identity still required for posting
+  if (!name || !badgeInstance) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const instanceId = cleanInstanceId(badge);
+  const instanceId = cleanInstanceId(
+    queryInstance || sharedInstance || badgeInstance || "DEFAULT"
+  );
   const bus = getRoomBus(instanceId);
 
   let body: any = null;

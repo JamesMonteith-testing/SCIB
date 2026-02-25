@@ -4,6 +4,12 @@ import { getRoomBus } from "@/lib/roomBus";
 
 export const dynamic = "force-dynamic";
 
+function cleanInstanceId(input: string) {
+  const raw = (input || "").trim();
+  const safe = raw.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 48);
+  return safe || "DEFAULT";
+}
+
 function sseFormat(event: string, data: any) {
   return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
 }
@@ -13,12 +19,12 @@ export async function GET(req: Request) {
   const queryInstance = url.searchParams.get("instance");
 
   const jar = await cookies();
-  const cookieInstance = jar.get("scib_badge_v1")?.value;
+  const sharedInstance = jar.get("scib_case01_instance_v1")?.value;
+  const badgeInstance = jar.get("scib_badge_v1")?.value;
 
-  const instanceId =
-    (queryInstance || cookieInstance || "DEFAULT")
-      .replace(/[^a-zA-Z0-9_-]/g, "")
-      .slice(0, 48) || "DEFAULT";
+  const instanceId = cleanInstanceId(
+    queryInstance || sharedInstance || badgeInstance || "DEFAULT"
+  );
 
   const bus = getRoomBus(instanceId);
 
@@ -27,21 +33,15 @@ export async function GET(req: Request) {
       const encoder = new TextEncoder();
 
       controller.enqueue(
-        encoder.encode(
-          sseFormat("hello", { ok: true, ts: Date.now(), instanceId })
-        )
+        encoder.encode(sseFormat("hello", { ok: true, ts: Date.now(), instanceId }))
       );
 
       const unsubscribe = bus.subscribe((evt) => {
-        controller.enqueue(
-          encoder.encode(sseFormat(evt.type, evt.payload))
-        );
+        controller.enqueue(encoder.encode(sseFormat(evt.type, evt.payload)));
       });
 
       const timer = setInterval(() => {
-        controller.enqueue(
-          encoder.encode(sseFormat("ping", { ts: Date.now() }))
-        );
+        controller.enqueue(encoder.encode(sseFormat("ping", { ts: Date.now() })));
       }, 20000);
 
       (controller as any).__cleanup = () => {
