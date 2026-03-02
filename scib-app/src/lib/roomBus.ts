@@ -1,53 +1,34 @@
-﻿export type RoomEvent =
-  | { type: "post"; payload: { id: string; ts: number; who: string; text: string } }
-  | { type: "ping"; payload: { ts: number } };
+type RoomEvent =
+  | { type: "post"; payload: any }
+  | { type: "ping"; payload: any }
+  | { type: "progress"; payload: any };
 
 type Listener = (evt: RoomEvent) => void;
 
-export type Bus = {
-  subscribe: (fn: Listener) => () => void;
-  emit: (evt: RoomEvent) => void;
-};
+class RoomBus {
+  private listeners = new Set<Listener>();
 
-// Keep a single bus across dev hot reloads
-const g = globalThis as any;
+  emit(evt: RoomEvent) {
+    for (const listener of this.listeners) {
+      try {
+        listener(evt);
+      } catch {}
+    }
+  }
 
-function createBus(): Bus {
-  const listeners = new Set<Listener>();
-
-  return {
-    subscribe(fn) {
-      listeners.add(fn);
-      return () => listeners.delete(fn);
-    },
-    emit(evt) {
-      for (const fn of listeners) {
-        try {
-          fn(evt);
-        } catch {
-          // ignore listener errors
-        }
-      }
-    },
-  };
+  subscribe(listener: Listener) {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
 }
 
-// Back-compat global bus (legacy - do not use for new room instances)
-export const roomBus: Bus = g.__SCIB_ROOM_BUS__ || (g.__SCIB_ROOM_BUS__ = createBus());
+const buses = new Map<string, RoomBus>();
 
-function cleanInstanceId(input: string) {
-  const raw = (input || "").trim();
-  const safe = raw.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 48);
-  return safe || "DEFAULT";
-}
-
-// Instance-scoped buses (prevents cross-user leakage)
-type BusMap = { [key: string]: Bus };
-
-export function getRoomBus(instanceId: string): Bus {
-  const key = cleanInstanceId(instanceId);
-
-  const map: BusMap = g.__SCIB_ROOM_BUS_MAP__ || (g.__SCIB_ROOM_BUS_MAP__ = {});
-  map[key] = map[key] || createBus();
-  return map[key];
+export function getRoomBus(instanceId: string) {
+  if (!buses.has(instanceId)) {
+    buses.set(instanceId, new RoomBus());
+  }
+  return buses.get(instanceId)!;
 }

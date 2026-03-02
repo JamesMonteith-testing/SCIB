@@ -55,7 +55,7 @@ function normalizeCode(raw: string) {
   return (raw || "")
     .trim()
     .toUpperCase()
-    .replace(/[Ã¢â‚¬â„¢']/g, "'")
+    .replace(/[ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢']/g, "'")
     .replace(/[^A-Z0-9\/\-\+\s']/g, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -414,9 +414,9 @@ export default function RoomClient({
               <div className="min-w-0">
                 <div className="font-semibold truncate">{username}</div>
                 <div className="text-sm text-slate-300">
-                  Badge: <span className="font-mono text-slate-200">{badge || "Ã¢â‚¬â€"}</span>
+                  Badge: <span className="font-mono text-slate-200">{badge || "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬"}</span>
                 </div>
-                <div className="text-xs text-slate-400">{providerText ? `Provider: ${providerText}` : "Provider: Ã¢â‚¬â€"}</div>
+                <div className="text-xs text-slate-400">{providerText ? `Provider: ${providerText}` : "Provider: ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬"}</div>
               </div>
             </div>
 
@@ -540,20 +540,11 @@ export default function RoomClient({
                   </div>
                 );
 
-                if (e.state === "available") {
-                  return (
-                    <Link key={e.id} href={e.href} className="block">
-                      {card}
-                    </Link>
-                  );
-                }
-
                 return (
-                  <div key={e.id}>
-                    {card}
-                  </div>
-                );
-              })}
+  <Link key={e.id} href={e.href} className="block">
+    {card}
+  </Link>
+);})}
             </div>
           </Panel>
 
