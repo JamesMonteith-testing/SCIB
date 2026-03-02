@@ -1,4 +1,4 @@
-﻿import Image from "next/image";
+import Image from "next/image";
 import Link from "next/link";
 import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
@@ -27,6 +27,12 @@ export default async function CaseBriefingPage() {
   if (!hasActiveIdentity) {
     redirect("/login");
   }
+
+  // IMPORTANT:
+  // scib_case01_instance_v1 is set HttpOnly by the join route, so client JS cannot read it.
+  // The server can read it here and pass a boolean to the client Continue button.
+  const sharedInstance = jar.get("scib_case01_instance_v1")?.value;
+  const hasSharedInstance = isNonEmpty(sharedInstance);
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-6">
@@ -58,7 +64,7 @@ export default async function CaseBriefingPage() {
               The Silent Switchboard
             </div>
             <div className="text-sm text-slate-300">
-              SCIB-CC-1991-022 • West Harrow Exchange • 03 May 1991
+              SCIB-CC-1991-022 â€¢ West Harrow Exchange â€¢ 03 May 1991
             </div>
           </div>
 
@@ -78,7 +84,7 @@ export default async function CaseBriefingPage() {
             <ul className="mt-2 space-y-2 text-sm text-slate-300 list-disc pl-5">
               <li>Switching console entered maintenance mode under unclear authorization.</li>
               <li>A silence window was recorded during the critical timeframe.</li>
-              <li>Toxicology indicates sedative administration 60–90 minutes prior to death.</li>
+              <li>Toxicology indicates sedative administration 60â€“90 minutes prior to death.</li>
               <li>An access log reference appears in documentation: WHX/OPS.</li>
             </ul>
           </div>
@@ -91,9 +97,9 @@ export default async function CaseBriefingPage() {
           </div>
 
           <div className="pt-2">
-            <ContinueClient />
+            <ContinueClient hasSharedInstance={hasSharedInstance} />
             <p className="text-xs text-slate-500 pt-3">
-              Signed in as <span className="text-slate-300">{name}</span> • Badge{" "}
+              Signed in as <span className="text-slate-300">{name}</span> â€¢ Badge{" "}
               <span className="text-slate-300">{badge}</span>
             </p>
           </div>

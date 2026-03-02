@@ -1,12 +1,24 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 
-export function GET() {
-  const res = NextResponse.redirect(new URL("/login", "http://scib.local"));
+function clearCookie(res: NextResponse, name: string) {
+  // Clear robustly: explicit path=/, expired date, and maxAge=0.
+  // IMPORTANT: We do NOT clear scib_case01_instance_v1 (instance persistence).
+  res.cookies.set({
+    name,
+    value: "",
+    path: "/",
+    expires: new Date(0),
+    maxAge: 0,
+  });
+}
 
-  // Clear cookies (match registration cookie names)
-  res.cookies.set("scib_provider_v1", "", { path: "/", expires: new Date(0) });
-  res.cookies.set("scib_name_v1", "", { path: "/", expires: new Date(0) });
-  res.cookies.set("scib_badge_v1", "", { path: "/", expires: new Date(0) });
+export async function GET(request: Request) {
+  const url = new URL("/login", request.url);
+  const res = NextResponse.redirect(url);
+
+  clearCookie(res, "scib_name_v1");
+  clearCookie(res, "scib_badge_v1");
+  clearCookie(res, "scib_provider_v1");
 
   return res;
 }

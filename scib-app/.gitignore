@@ -48,3 +48,7 @@ data/room/case01.json
 *.bak_*
 
 data/room/
+
+# Local-only test artifacts (do not commit)
+tests/
+test-results/

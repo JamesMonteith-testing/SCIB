@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import { useRouter } from "next/navigation";
 
@@ -6,39 +6,35 @@ function setCookie(name: string, value: string) {
   document.cookie = `${name}=${encodeURIComponent(value)}; path=/`;
 }
 
-function getCookie(name: string) {
-  const match = document.cookie
-    .split("; ")
-    .find((row) => row.startsWith(name + "="));
-  return match ? decodeURIComponent(match.split("=")[1]) : null;
-}
-
-export default function ContinueClient() {
+export default function ContinueClient({
+  hasSharedInstance,
+}: {
+  hasSharedInstance: boolean;
+}) {
   const router = useRouter();
 
   function handleContinue() {
     setCookie("scib_briefing_complete_v1", "true");
 
-    const sharedInstance = getCookie("scib_case01_instance_v1");
+    const dest = hasSharedInstance ? "/investigation-room" : "/welcome";
 
-    // If user arrived via shared investigation link,
-    // go straight to investigation room
-    if (sharedInstance && sharedInstance.trim().length > 0) {
-      router.push("/investigation-room");
-      router.refresh();
-      return;
-    }
+    // SPA navigation first
+    router.push(dest);
 
-    // Normal flow
-    router.push("/welcome");
-    router.refresh();
+    // Fallback for dev/hydration edge cases: force navigation if still on briefing shortly after.
+    window.setTimeout(() => {
+      try {
+        if (window.location.pathname === "/case-briefing") {
+          window.location.href = dest;
+        }
+      } catch {}
+    }, 50);
   }
 
   return (
     <button
-      type="button"
       onClick={handleContinue}
-      className="w-full rounded-xl bg-blue-600 hover:bg-blue-500 transition px-4 py-3 font-medium text-center"
+      className="rounded-md bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-900 hover:bg-white"
     >
       Continue to SCIB Database
     </button>
