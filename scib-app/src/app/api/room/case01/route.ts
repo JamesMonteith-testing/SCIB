@@ -1,4 +1,4 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import path from "path";
 import { promises as fs } from "fs";
@@ -18,10 +18,25 @@ type RoomState = {
   posts: RoomPost[];
 };
 
-function cleanInstanceId(input: string) {
+function cleanInstanceIdOrNull(input: string | null | undefined) {
   const raw = (input || "").trim();
   const safe = raw.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 48);
-  return safe || "DEFAULT";
+  return safe.length > 0 ? safe : null;
+}
+
+function resolveInstanceId(req: Request, jar: Awaited<ReturnType<typeof cookies>>) {
+  const url = new URL(req.url);
+  const queryInstance = url.searchParams.get("instance");
+  const sharedInstance = jar.get("scib_case01_instance_v1")?.value;
+
+  // IMPORTANT:
+  // No badge fallback. No DEFAULT fallback.
+  // If caller didn't join or mint an instance, they are not allowed into a shared room.
+  const instanceId = cleanInstanceIdOrNull(queryInstance || sharedInstance);
+
+  return {
+    instanceId,
+  };
 }
 
 function getDataPath(instanceId: string) {
@@ -58,21 +73,24 @@ async function writeState(instanceId: string, state: RoomState) {
 export const dynamic = "force-dynamic";
 
 export async function GET(req: Request) {
-  const url = new URL(req.url);
-  const queryInstance = url.searchParams.get("instance");
-
   const jar = await cookies();
-  const sharedInstance = jar.get("scib_case01_instance_v1")?.value;
-  const badgeInstance = jar.get("scib_badge_v1")?.value;
+  const { instanceId } = resolveInstanceId(req, jar);
 
-  const instanceId = cleanInstanceId(
-    queryInstance || sharedInstance || badgeInstance || "DEFAULT"
-  );
+  if (!instanceId) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Missing room instance. Join or create an investigation room first.",
+      },
+      { status: 400 }
+    );
+  }
 
   const state = await readState(instanceId);
   const posts = [...state.posts].sort((a, b) => b.ts - a.ts);
 
   return NextResponse.json({
+    ok: true,
     caseId: state.caseId,
     instanceId,
     posts,
@@ -80,34 +98,40 @@ export async function GET(req: Request) {
 }
 
 export async function POST(req: Request) {
-  const url = new URL(req.url);
-  const queryInstance = url.searchParams.get("instance");
-
   const jar = await cookies();
+
   const name = (jar.get("scib_name_v1")?.value || "").trim().slice(0, 24);
-  const sharedInstance = jar.get("scib_case01_instance_v1")?.value;
-  const badgeInstance = jar.get("scib_badge_v1")?.value;
+  const badge = (jar.get("scib_badge_v1")?.value || "").trim().slice(0, 24);
 
   // Identity still required for posting
-  if (!name || !badgeInstance) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  if (!name || !badge) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
 
-  const instanceId = cleanInstanceId(
-    queryInstance || sharedInstance || badgeInstance || "DEFAULT"
-  );
+  const { instanceId } = resolveInstanceId(req, jar);
+
+  if (!instanceId) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Missing room instance. Join or create an investigation room first.",
+      },
+      { status: 400 }
+    );
+  }
+
   const bus = getRoomBus(instanceId);
 
   let body: any = null;
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
   }
 
   const text = String(body?.text || "").trim();
-  if (!text) return NextResponse.json({ error: "Missing text" }, { status: 400 });
-  if (text.length > 1200) return NextResponse.json({ error: "Text too long" }, { status: 400 });
+  if (!text) return NextResponse.json({ ok: false, error: "Missing text" }, { status: 400 });
+  if (text.length > 1200) return NextResponse.json({ ok: false, error: "Text too long" }, { status: 400 });
 
   const state = await readState(instanceId);
 
@@ -123,5 +147,5 @@ export async function POST(req: Request) {
 
   bus.emit({ type: "post", payload: post });
 
-  return NextResponse.json({ ok: true, post });
+  return NextResponse.json({ ok: true, instanceId, post });
 }

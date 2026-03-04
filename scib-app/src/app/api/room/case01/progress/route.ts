@@ -4,153 +4,181 @@ import path from "path";
 import { promises as fs } from "fs";
 import { getRoomBus } from "@/lib/roomBus";
 
+export const dynamic = "force-dynamic";
+
 type ProgressState = {
   version: number;
   caseId: string;
-  createdAt: number;
+  instanceId: string;
   updatedAt: number;
   unlockedEvidence: string[];
   solved: boolean;
+  activity: Array<{
+    id: string;
+    ts: number;
+    type: "unlock_evidence" | "solve_case" | "note";
+    who?: string;
+    evidenceId?: string;
+  }>;
 };
 
-export const dynamic = "force-dynamic";
-
-function cleanInstanceId(input: string) {
+function cleanInstanceIdOrNull(input: string | null | undefined) {
   const raw = (input || "").trim();
   const safe = raw.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 48);
-  return safe || "DEFAULT";
+  return safe.length > 0 ? safe : null;
 }
 
-function normalizeCode(raw: string) {
-  return (raw || "")
+function normalizeEvidenceId(v: any) {
+  const raw = String(v || "").trim().toUpperCase();
+  const safe = raw.replace(/[^A-Z0-9\-]/g, "").slice(0, 12);
+  return safe.length > 0 ? safe : null;
+}
+
+function normalizeCode(raw: any) {
+  return String(raw || "")
     .trim()
     .toUpperCase()
-    // normalize common smart apostrophes to ASCII
-    .replace(/[’‘]/g, "'")
-    // keep only the characters we expect for these codes
+    .replace(/[’]/g, "'")
     .replace(/[^A-Z0-9\/\-\+\s']/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function normalizeEvidenceId(raw: string) {
-  const v = String(raw || "").trim().toUpperCase();
-  return /^E-\d{2}$/.test(v) ? v : null;
+function isNonEmpty(v: string | null | undefined) {
+  return !!(v && v.trim().length > 0);
 }
 
-function baseUnlocked() {
-  return ["E-01", "E-02"];
-}
-
-function applyUnlockCode(codeRaw: string): { ok: boolean; unlocked: string[]; message: string } {
-  const code = normalizeCode(codeRaw);
-  if (!code) return { ok: false, unlocked: [], message: "Enter a solution." };
-
-  const unlocks: string[] = [];
-
-  // Mirror current prototype mapping
-  if (code === "MKELLS") unlocks.push("E-05", "E-06");
-  if (code === "WHX/OPS 1991-022-03" || code === "WHX/OPS+1991-022-03") unlocks.push("E-03");
-  if (code === "DON'T TRUST THE SWITCHBOARD" || code === "DONT TRUST THE SWITCHBOARD") unlocks.push("E-04");
-
-  if (unlocks.length === 0) return { ok: false, unlocked: [], message: "That is not correct." };
-  return { ok: true, unlocked: unlocks, message: `Unlocked: ${unlocks.join(", ")}` };
-}
-
-function getDataPath(instanceId: string) {
+function getProgressPath(instanceId: string) {
   return path.join(process.cwd(), "data", "room", `case01.progress.${instanceId}.json`);
 }
 
-function coerceState(parsed: any): ProgressState {
-  const now = Date.now();
-  const unlocked = Array.isArray(parsed?.unlockedEvidence) ? parsed.unlockedEvidence : [];
-  const unlockedNorm = unlocked
-    .map(normalizeEvidenceId)
-    .filter((x: string | null): x is string => !!x);
-
-  const merged = Array.from(new Set([...baseUnlocked(), ...unlockedNorm]));
-
-  return {
-    version: typeof parsed?.version === "number" ? parsed.version : 1,
-    caseId: typeof parsed?.caseId === "string" ? parsed.caseId : "SCIB-CC-1991-022",
-    createdAt: typeof parsed?.createdAt === "number" ? parsed.createdAt : now,
-    updatedAt: typeof parsed?.updatedAt === "number" ? parsed.updatedAt : now,
-    unlockedEvidence: merged,
-    solved: !!parsed?.solved,
-  };
-}
-
-async function readState(instanceId: string): Promise<ProgressState> {
-  const DATA_PATH = getDataPath(instanceId);
+async function readProgress(instanceId: string): Promise<ProgressState> {
+  const p = getProgressPath(instanceId);
 
   try {
-    const raw = await fs.readFile(DATA_PATH, "utf8");
-    const parsed = JSON.parse(raw);
-    return coerceState(parsed);
+    const raw = await fs.readFile(p, "utf8");
+    const parsed = JSON.parse(raw) as ProgressState;
+
+    return {
+      version: typeof parsed.version === "number" ? parsed.version : 1,
+      caseId: parsed.caseId || "SCIB-CC-1991-022",
+      instanceId,
+      updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
+      unlockedEvidence: Array.isArray(parsed.unlockedEvidence) ? parsed.unlockedEvidence.map((x) => String(x).toUpperCase()) : [],
+      solved: !!parsed.solved,
+      activity: Array.isArray(parsed.activity) ? parsed.activity : [],
+    };
   } catch {
     const fresh: ProgressState = {
       version: 1,
       caseId: "SCIB-CC-1991-022",
-      createdAt: Date.now(),
+      instanceId,
       updatedAt: Date.now(),
-      unlockedEvidence: baseUnlocked(),
+      unlockedEvidence: ["E-01", "E-02"],
       solved: false,
+      activity: [],
     };
-
-    await fs.mkdir(path.dirname(DATA_PATH), { recursive: true });
-    await fs.writeFile(DATA_PATH, JSON.stringify(fresh, null, 2), "utf8");
+    await fs.mkdir(path.dirname(p), { recursive: true });
+    await fs.writeFile(p, JSON.stringify(fresh, null, 2), "utf8");
     return fresh;
   }
 }
 
-async function writeState(instanceId: string, state: ProgressState) {
-  const DATA_PATH = getDataPath(instanceId);
-  await fs.mkdir(path.dirname(DATA_PATH), { recursive: true });
-  await fs.writeFile(DATA_PATH, JSON.stringify(state, null, 2), "utf8");
+async function writeProgress(instanceId: string, state: ProgressState) {
+  const p = getProgressPath(instanceId);
+  await fs.mkdir(path.dirname(p), { recursive: true });
+  await fs.writeFile(p, JSON.stringify(state, null, 2), "utf8");
 }
 
-function emitProgress(instanceId: string, payload: any) {
-  // Existing stream forwards evt.payload as SSE data (not the whole evt)
-  const bus = getRoomBus(instanceId);
-  bus.emit({
-    type: "progress",
-    payload,
-  });
+function applyUnlockMapping(evidenceId: string, codeNormalized: string): boolean {
+  // IMPORTANT: Keep mapping server-side only (do not leak answers in UI hints)
+  if (evidenceId === "E-03") {
+    return codeNormalized === "WHX/OPS 1991-022-03" || codeNormalized === "WHX/OPS+1991-022-03";
+  }
+  if (evidenceId === "E-04") {
+    return codeNormalized === "DON'T TRUST THE SWITCHBOARD" || codeNormalized === "DONT TRUST THE SWITCHBOARD";
+  }
+  if (evidenceId === "E-05" || evidenceId === "E-06") {
+    return codeNormalized === "MKELLS";
+  }
+  return false;
+}
+
+function mergeLocalStorageUnlocks(state: ProgressState, localUnlocked: any) {
+  // Migration-only: accept unlockedEvidence array sent by older clients (localStorage)
+  if (!Array.isArray(localUnlocked)) return state;
+
+  const incoming = localUnlocked
+    .map((x) => String(x || "").trim().toUpperCase())
+    .filter((x) => x.length > 0);
+
+  if (incoming.length === 0) return state;
+
+  const set = new Set((state.unlockedEvidence || []).map((x) => String(x).toUpperCase()));
+  for (const id of incoming) set.add(id);
+
+  state.unlockedEvidence = Array.from(set);
+  state.updatedAt = Date.now();
+  return state;
 }
 
 export async function GET(req: Request) {
-  const url = new URL(req.url);
-  const queryInstance = url.searchParams.get("instance");
-
   const jar = await cookies();
-  const sharedInstance = jar.get("scib_case01_instance_v1")?.value;
-  const badgeInstance = jar.get("scib_badge_v1")?.value;
+  const url = new URL(req.url);
 
-  const instanceId = cleanInstanceId(queryInstance || sharedInstance || badgeInstance || "DEFAULT");
-  const state = await readState(instanceId);
+  const queryInstance = url.searchParams.get("instance");
+  const sharedInstance = jar.get("scib_case01_instance_v1")?.value;
+
+  // IMPORTANT:
+  // No badge fallback. No DEFAULT fallback.
+  const instanceId = cleanInstanceIdOrNull(queryInstance || sharedInstance);
+
+  if (!instanceId) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Missing room instance. Join or create an investigation room first.",
+      },
+      { status: 400 }
+    );
+  }
+
+  const state = await readProgress(instanceId);
 
   return NextResponse.json({
     ok: true,
-    instanceId,
     state,
   });
 }
 
 export async function POST(req: Request) {
-  const url = new URL(req.url);
-  const queryInstance = url.searchParams.get("instance");
-
   const jar = await cookies();
-  const name = (jar.get("scib_name_v1")?.value || "").trim().slice(0, 24);
-  const sharedInstance = jar.get("scib_case01_instance_v1")?.value;
-  const badgeInstance = jar.get("scib_badge_v1")?.value;
+  const url = new URL(req.url);
 
-  // Require identity to mutate shared progress
-  if (!name || !badgeInstance) {
-    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  const queryInstance = url.searchParams.get("instance");
+  const sharedInstance = jar.get("scib_case01_instance_v1")?.value;
+
+  // IMPORTANT:
+  // No badge fallback. No DEFAULT fallback.
+  const instanceId = cleanInstanceIdOrNull(queryInstance || sharedInstance);
+
+  if (!instanceId) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Missing room instance. Join or create an investigation room first.",
+      },
+      { status: 400 }
+    );
   }
 
-  const instanceId = cleanInstanceId(queryInstance || sharedInstance || badgeInstance || "DEFAULT");
+  const name = (jar.get("scib_name_v1")?.value || "").trim().slice(0, 24);
+  const badge = (jar.get("scib_badge_v1")?.value || "").trim().slice(0, 24);
+
+  // For mutations, require identity (prevents anonymous spam on shared room state)
+  if (!isNonEmpty(name) || !isNonEmpty(badge)) {
+    return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
+  }
 
   let body: any = null;
   try {
@@ -159,70 +187,78 @@ export async function POST(req: Request) {
     return NextResponse.json({ ok: false, error: "Invalid JSON" }, { status: 400 });
   }
 
-  // Optional migration hook: allow client to send its localStorage unlock list (no code required)
-  const clientUnlockedRaw = Array.isArray(body?.clientUnlocked) ? body.clientUnlocked : [];
-  const clientUnlocked = clientUnlockedRaw
-    .map(normalizeEvidenceId)
-    .filter((x: string | null): x is string => !!x);
+  const action = String(body?.action || "").trim();
 
-  const codeRaw = String(body?.code || "").trim();
-  const hasCode = codeRaw.length > 0;
+  // Migration-only: merge legacy localStorage unlock list
+  if (action === "merge_local_unlocked") {
+    const state = await readProgress(instanceId);
+    const merged = mergeLocalStorageUnlocks(state, body?.unlockedEvidence);
+    await writeProgress(instanceId, merged);
 
-  if (!hasCode && clientUnlocked.length === 0) {
-    return NextResponse.json(
-      { ok: false, message: "Enter a solution.", unlocked: [] as string[] },
-      { status: 200 }
-    );
+    // Broadcast snapshot
+    const bus = getRoomBus(instanceId);
+    bus.emit({ type: "progress", payload: { state: merged } });
+
+    return NextResponse.json({ ok: true, state: merged });
   }
 
-  const prior = await readState(instanceId);
+  if (action === "unlock_evidence") {
+    const evidenceId = normalizeEvidenceId(body?.evidenceId);
+    if (!evidenceId) return NextResponse.json({ ok: false, error: "Missing evidenceId" }, { status: 400 });
 
-  let unlockedFromCode: string[] = [];
-  let message = "Synced progress.";
+    const codeNormalized = normalizeCode(body?.code);
 
-  if (hasCode) {
-    const result = applyUnlockCode(codeRaw);
-    if (!result.ok) {
-      return NextResponse.json(
-        { ok: false, message: result.message, unlocked: [] as string[] },
-        { status: 200 }
-      );
+    const state = await readProgress(instanceId);
+    const already = new Set((state.unlockedEvidence || []).map((x) => String(x).toUpperCase()));
+
+    // Accept idempotent unlock (still return ok)
+    if (!already.has(evidenceId)) {
+      const valid = applyUnlockMapping(evidenceId, codeNormalized);
+      if (!valid) {
+        return NextResponse.json({ ok: false, error: "Invalid code" }, { status: 400 });
+      }
+
+      already.add(evidenceId);
+      state.unlockedEvidence = Array.from(already);
+      state.updatedAt = Date.now();
+      state.activity.unshift({
+        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        ts: Date.now(),
+        type: "unlock_evidence",
+        who: name,
+        evidenceId,
+      });
+
+      await writeProgress(instanceId, state);
+
+      // Broadcast snapshot
+      const bus = getRoomBus(instanceId);
+      bus.emit({ type: "progress", payload: { state } });
     }
-    unlockedFromCode = result.unlocked;
-    message = result.message;
+
+    return NextResponse.json({ ok: true, state });
   }
 
-  const nextUnlocked = Array.from(
-    new Set([...baseUnlocked(), ...prior.unlockedEvidence, ...clientUnlocked, ...unlockedFromCode])
-  );
+  if (action === "solve_case") {
+    const state = await readProgress(instanceId);
+    if (!state.solved) {
+      state.solved = true;
+      state.updatedAt = Date.now();
+      state.activity.unshift({
+        id: `${Date.now()}-${Math.random().toString(16).slice(2)}`,
+        ts: Date.now(),
+        type: "solve_case",
+        who: name,
+      });
 
-  const unlockedAdded = nextUnlocked.filter((id) => !prior.unlockedEvidence.includes(id));
+      await writeProgress(instanceId, state);
 
-  const next: ProgressState = {
-    ...prior,
-    updatedAt: Date.now(),
-    unlockedEvidence: nextUnlocked,
-  };
+      const bus = getRoomBus(instanceId);
+      bus.emit({ type: "progress", payload: { state } });
+    }
 
-  await writeState(instanceId, next);
+    return NextResponse.json({ ok: true, state });
+  }
 
-  // Emit authoritative snapshot for realtime clients
-  emitProgress(instanceId, {
-    kind: hasCode ? "evidence_unlock" : "migration_merge",
-    ts: Date.now(),
-    who: name,
-    instanceId,
-    unlocked: unlockedFromCode,
-    unlockedAdded,
-    unlockedEvidence: next.unlockedEvidence,
-  });
-
-  return NextResponse.json({
-    ok: true,
-    instanceId,
-    message,
-    unlocked: unlockedFromCode,
-    unlockedAdded,
-    state: next,
-  });
+  return NextResponse.json({ ok: false, error: "Unknown action" }, { status: 400 });
 }

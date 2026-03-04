@@ -1,57 +1,73 @@
-﻿import { NextResponse } from "next/server";
+import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import { getRoomBus } from "@/lib/roomBus";
 
 export const dynamic = "force-dynamic";
 
-function cleanInstanceId(input: string) {
+function cleanInstanceIdOrNull(input: string | null | undefined) {
   const raw = (input || "").trim();
   const safe = raw.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 48);
-  return safe || "DEFAULT";
-}
-
-function sseFormat(event: string, data: any) {
-  return `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+  return safe.length > 0 ? safe : null;
 }
 
 export async function GET(req: Request) {
-  const url = new URL(req.url);
-  const queryInstance = url.searchParams.get("instance");
-
   const jar = await cookies();
-  const sharedInstance = jar.get("scib_case01_instance_v1")?.value;
-  const badgeInstance = jar.get("scib_badge_v1")?.value;
+  const url = new URL(req.url);
 
-  const instanceId = cleanInstanceId(
-    queryInstance || sharedInstance || badgeInstance || "DEFAULT"
-  );
+  const queryInstance = url.searchParams.get("instance");
+  const sharedInstance = jar.get("scib_case01_instance_v1")?.value;
+
+  // IMPORTANT:
+  // No badge fallback. No DEFAULT fallback.
+  const instanceId = cleanInstanceIdOrNull(queryInstance || sharedInstance);
+
+  if (!instanceId) {
+    return NextResponse.json(
+      {
+        ok: false,
+        error: "Missing room instance. Join or create an investigation room first.",
+      },
+      { status: 400 }
+    );
+  }
 
   const bus = getRoomBus(instanceId);
 
   const stream = new ReadableStream({
     start(controller) {
-      const encoder = new TextEncoder();
+      const enc = new TextEncoder();
 
-      controller.enqueue(
-        encoder.encode(sseFormat("hello", { ok: true, ts: Date.now(), instanceId }))
-      );
+      function send(event: string, data: any) {
+        try {
+          controller.enqueue(enc.encode(`event: ${event}\n`));
+          controller.enqueue(enc.encode(`data: ${JSON.stringify(data)}\n\n`));
+        } catch {
+          // ignore
+        }
+      }
+
+      send("hello", { ok: true, instanceId, ts: Date.now() });
 
       const unsubscribe = bus.subscribe((evt) => {
-        controller.enqueue(encoder.encode(sseFormat(evt.type, evt.payload)));
+        // evt.type is the SSE event name
+        send(evt.type, evt.payload);
       });
 
-      const timer = setInterval(() => {
-        controller.enqueue(encoder.encode(sseFormat("ping", { ts: Date.now() })));
+      const ping = setInterval(() => {
+        send("ping", { ts: Date.now() });
       }, 20000);
 
-      (controller as any).__cleanup = () => {
-        clearInterval(timer);
-        unsubscribe();
+      return () => {
+        try {
+          clearInterval(ping);
+        } catch {}
+        try {
+          unsubscribe();
+        } catch {}
+        try {
+          controller.close();
+        } catch {}
       };
-    },
-    cancel(controller) {
-      const cleanup = (controller as any).__cleanup;
-      if (typeof cleanup === "function") cleanup();
     },
   });
 
