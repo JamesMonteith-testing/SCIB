@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -10,6 +10,17 @@ type RoomPost = {
   who: string;
   text: string;
 };
+
+type ProgressState = {
+  unlockedEvidence?: string[];
+  activity?: { type: string; who?: string; evidenceId?: string; ts?: number }[];
+};
+
+function isUuid(v: string) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    (v || "").trim()
+  );
+}
 
 function Tag({ children }: { children: React.ReactNode }) {
   return (
@@ -45,93 +56,6 @@ function StatusPill({ state }: { state: "available" | "locked" }) {
   );
 }
 
-function cleanInstanceId(input: string) {
-  const raw = (input || "").trim();
-  const safe = raw.replace(/[^a-zA-Z0-9_-]/g, "").slice(0, 48);
-  return safe || "DEFAULT";
-}
-
-function normalizeCode(raw: string) {
-  return (raw || "")
-    .trim()
-    .toUpperCase()
-    .replace(/[ÃƒÂ¢Ã¢â€šÂ¬Ã¢â€žÂ¢']/g, "'")
-    .replace(/[^A-Z0-9\/\-\+\s']/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function readUnlocked(key: string): string[] {
-  try {
-    const raw = localStorage.getItem(key);
-    if (!raw) return ["E-01", "E-02"];
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.every((x) => typeof x === "string")) {
-      const base = new Set(["E-01", "E-02", ...parsed.map((s) => s.toUpperCase())]);
-      return Array.from(base);
-    }
-    return ["E-01", "E-02"];
-  } catch {
-    return ["E-01", "E-02"];
-  }
-}
-
-function writeUnlocked(key: string, ids: string[]) {
-  const base = new Set(["E-01", "E-02", ...ids.map((s) => s.toUpperCase())]);
-  localStorage.setItem(key, JSON.stringify(Array.from(base)));
-}
-
-// Codes -> bundles (local prototype).
-// - MKELLS (from E-01) unlocks E-05 + E-06
-// - WHX/OPS 1991-022-03 unlocks E-03
-// - DON'T TRUST THE SWITCHBOARD unlocks E-04
-function applyEvidenceUnlock(unlockStoreKey: string, codeRaw: string): { ok: boolean; unlocked: string[]; message: string } {
-  const code = normalizeCode(codeRaw);
-
-  if (!code) return { ok: false, unlocked: [], message: "Enter a solution." };
-
-  const unlocks: string[] = [];
-
-  if (code === "MKELLS") {
-    unlocks.push("E-05", "E-06");
-  }
-
-  if (code === "WHX/OPS 1991-022-03" || code === "WHX/OPS+1991-022-03") {
-    unlocks.push("E-03");
-  }
-
-  if (code === "DON'T TRUST THE SWITCHBOARD" || code === "DONT TRUST THE SWITCHBOARD") {
-    unlocks.push("E-04");
-  }
-
-  if (unlocks.length === 0) {
-    return { ok: false, unlocked: [], message: "That is not correct." };
-  }
-
-  const current = readUnlocked(unlockStoreKey);
-  const next = Array.from(new Set([...current, ...unlocks]));
-  writeUnlocked(unlockStoreKey, next);
-
-  return { ok: true, unlocked: unlocks, message: `Unlocked: ${unlocks.join(", ")}` };
-}
-
-function ClueBlock({ id }: { id: string }) {
-  const clue =
-    id === "E-03"
-      ? 'Clue: locate the access log header stamp and the faint footer reference. Submit as "WHX/OPS 1991-022-03".'
-      : id === "E-04"
-      ? "Clue: a single warning phrase in the engineer notebook is the keyword. Submit the phrase exactly."
-      : id === "E-05"
-      ? "Clue: use the access card label from E-01."
-      : id === "E-06"
-      ? "Clue: use the access card label from E-01."
-      : "";
-
-  if (!clue) return null;
-
-  return <div className="pt-2 text-xs text-slate-500">{clue}</div>;
-}
-
 type Provider = "linkedin" | "facebook" | "instagram";
 
 function isProvider(v: string | undefined): v is Provider {
@@ -140,6 +64,69 @@ function isProvider(v: string | undefined): v is Provider {
 
 function providerLabel(p: Provider) {
   return p === "linkedin" ? "LinkedIn" : p === "facebook" ? "Facebook" : "Instagram";
+}
+
+function normalizeEvidenceId(v: string) {
+  return (v || "").trim().toUpperCase();
+}
+
+function evidenceHref(id: string): string | null {
+  const key = normalizeEvidenceId(id);
+  const map: Record<string, string> = {
+    "E-01": "/cases/silent-switchboard/case-file/evidence/e-01",
+    "E-02": "/cases/silent-switchboard/case-file/evidence/e-02",
+    "E-03": "/cases/silent-switchboard/case-file/evidence/e-03",
+    "E-04": "/cases/silent-switchboard/case-file/evidence/e-04",
+    "E-05": "/cases/silent-switchboard/case-file/evidence/e-05",
+    "E-06": "/cases/silent-switchboard/case-file/evidence/e-06",
+  };
+  return map[key] || null;
+}
+
+function evidenceLabel(id: string): string {
+  const key = normalizeEvidenceId(id);
+  const map: Record<string, string> = {
+    "E-01": "Lanyard + Access Card",
+    "E-02": "Coffee Cup",
+    "E-03": "Dot-matrix Access Log (partial)",
+    "E-04": "Engineer Notebook Page",
+    "E-05": "Master Key Inventory Sheet",
+    "E-06": "Maintenance Console Printout",
+  };
+  return map[key] || "Evidence";
+}
+
+function makeSystemUnlockPost(who: string, evidenceId: string): RoomPost {
+  const id = `sys_unlock_${Date.now()}_${Math.random().toString(16).slice(2)}`;
+  const href = evidenceHref(evidenceId);
+  const label = evidenceLabel(evidenceId);
+  const text = href
+    ? `${who} unlocked ${normalizeEvidenceId(evidenceId)} — ${label} | ${href}`
+    : `${who} unlocked ${normalizeEvidenceId(evidenceId)} — ${label}`;
+  return { id, ts: Date.now(), who: "System", text };
+}
+
+function renderPostTextWithEvidenceLink(text: string) {
+  const raw = String(text || "");
+  // We only linkify internal evidence URLs we generate ("/cases/.../e-0x")
+  const re = /(\/cases\/silent-switchboard\/case-file\/evidence\/e-\d{2})/gi;
+  const parts = raw.split(re);
+
+  return parts.map((part, idx) => {
+    if (re.test(part)) {
+      const href = part;
+      return (
+        <Link
+          key={`lnk_${idx}`}
+          href={href}
+          className="underline underline-offset-4 decoration-slate-600 hover:decoration-slate-200"
+        >
+          {href}
+        </Link>
+      );
+    }
+    return <span key={`txt_${idx}`}>{part}</span>;
+  });
 }
 
 export default function RoomClient({
@@ -156,16 +143,19 @@ export default function RoomClient({
   const [username] = useState<string>(initialUsername);
   const [badge] = useState<string>(initialBadge || "");
   const [provider] = useState<string>(initialProvider || "");
-  const [instanceId] = useState<string>(cleanInstanceId(initialInstanceId || "DEFAULT"));
+  const [instanceId] = useState<string>((initialInstanceId || "").trim());
+
+  // Client safety: if we ever render with a bad instance id, force registration
+  useEffect(() => {
+    if (!isUuid(instanceId)) {
+      window.location.assign("/login");
+    }
+  }, [instanceId]);
 
   const providerText = useMemo(() => {
     const p = (provider || "").toLowerCase().trim();
     return isProvider(p) ? providerLabel(p) : "";
   }, [provider]);
-
-  const unlockStoreKey = useMemo(() => {
-    return `scib_case01_unlocked_evidence_${instanceId}_v1`;
-  }, [instanceId]);
 
   const [posts, setPosts] = useState<RoomPost[]>([]);
   const [text, setText] = useState("");
@@ -175,6 +165,12 @@ export default function RoomClient({
   const [copied, setCopied] = useState(false);
   const [err, setErr] = useState<string | null>(null);
 
+  // SERVER-AUTHORITATIVE progress snapshot
+  const [progress, setProgress] = useState<ProgressState>({ unlockedEvidence: ["E-01", "E-02"], activity: [] });
+
+  const streamRef = useRef<EventSource | null>(null);
+  const shareInputRef = useRef<HTMLInputElement | null>(null);
+
   useEffect(() => {
     try {
       setOrigin(window.location.origin);
@@ -183,20 +179,16 @@ export default function RoomClient({
     }
   }, []);
 
-  const [unlockCode, setUnlockCode] = useState("");
-  const [unlockMsg, setUnlockMsg] = useState<string | null>(null);
-  const [unlockedEvidence, setUnlockedEvidence] = useState<string[]>(["E-01", "E-02"]);
-
-  const streamRef = useRef<EventSource | null>(null);
-  const shareInputRef = useRef<HTMLInputElement | null>(null);
-
   const caseMeta = useMemo(() => {
+    // Keep query param for backward compatibility with existing API implementation,
+    // but server should still validate the instance cookie.
     const qs = `?instance=${encodeURIComponent(instanceId)}`;
     return {
       title: "Case 01 - The Silent Switchboard",
       caseId: "SCIB-CC-1991-022",
       roomApi: `/api/room/case01${qs}`,
       roomStream: `/api/room/case01/stream${qs}`,
+      progressApi: `/api/room/case01/progress${qs}`,
     };
   }, [instanceId]);
 
@@ -217,7 +209,6 @@ export default function RoomClient({
 
     let ok = false;
 
-    // 1) Modern Clipboard API (may be blocked by browser permissions / insecure contexts)
     try {
       if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
         await navigator.clipboard.writeText(textToCopy);
@@ -225,7 +216,6 @@ export default function RoomClient({
       }
     } catch {}
 
-    // 2) Fallback: select input + execCommand("copy")
     if (!ok) {
       try {
         const el = shareInputRef.current;
@@ -237,7 +227,6 @@ export default function RoomClient({
       } catch {}
     }
 
-    // 3) Final fallback: still select so user can Ctrl+C
     if (!ok) {
       try {
         const el = shareInputRef.current;
@@ -265,6 +254,13 @@ export default function RoomClient({
     ],
     []
   );
+
+  const unlockedEvidence = useMemo(() => {
+    const base = new Set<string>(["E-01", "E-02"]);
+    const list = Array.isArray(progress.unlockedEvidence) ? progress.unlockedEvidence : [];
+    for (const e of list) base.add(normalizeEvidenceId(e));
+    return Array.from(base);
+  }, [progress.unlockedEvidence]);
 
   const evidenceItems = useMemo(() => {
     const unlockedSet = new Set(unlockedEvidence.map((s) => s.toUpperCase()));
@@ -299,13 +295,28 @@ export default function RoomClient({
     }
   }
 
-  function refreshUnlocks() {
-    setUnlockedEvidence(readUnlocked(unlockStoreKey));
+  async function loadProgress() {
+    try {
+      const res = await fetch(caseMeta.progressApi, { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok || !data?.state) return;
+      setProgress(data.state as ProgressState);
+    } catch {}
+  }
+
+  // Insert a system message once per evidenceId (dedupe)
+  function announceUnlock(who: string, evidenceId: string) {
+    const eid = normalizeEvidenceId(evidenceId);
+    setPosts((prev) => {
+      if (prev.some((p) => p.who === "System" && String(p.text || "").includes(`unlocked ${eid}`))) return prev;
+      return [makeSystemUnlockPost(who, eid), ...prev];
+    });
   }
 
   useEffect(() => {
-    refreshUnlocks();
+    // Initial hydration: posts + progress
     loadInitial();
+    loadProgress();
 
     try {
       const es = new EventSource(caseMeta.roomStream);
@@ -321,6 +332,49 @@ export default function RoomClient({
         } catch {}
       });
 
+      // CRITICAL: progress/unlock propagation for shared-state
+      es.addEventListener("progress", (evt) => {
+        try {
+          const payload = JSON.parse((evt as MessageEvent).data);
+
+          // Common shape: { state: { unlockedEvidence, activity } }
+          const nextState = payload?.state;
+          if (nextState && typeof nextState === "object") {
+            setProgress(nextState as ProgressState);
+
+            // If we have an unlock activity, announce it
+            const activity = Array.isArray(nextState.activity) ? nextState.activity : [];
+            const last = activity.length > 0 ? activity[activity.length - 1] : null;
+            if (last && last.type === "unlock_evidence" && typeof last.evidenceId === "string") {
+              const who = typeof last.who === "string" && last.who.trim() ? last.who.trim() : "A teammate";
+              announceUnlock(who, last.evidenceId);
+            }
+            return;
+          }
+
+          // Fallback: if server emits { unlockedEvidence, by, evidenceId }
+          const evidenceId =
+            (typeof payload?.evidenceId === "string" && payload.evidenceId) ||
+            (typeof payload?.evidence_id === "string" && payload.evidence_id) ||
+            (typeof payload?.evidence === "string" && payload.evidence) ||
+            null;
+
+          const who =
+            (typeof payload?.who === "string" && payload.who) ||
+            (typeof payload?.by === "string" && payload.by) ||
+            null;
+
+          if (evidenceId) {
+            announceUnlock(who && who.trim() ? who.trim() : "A teammate", evidenceId);
+            // Ensure we refresh authoritative state
+            loadProgress();
+          }
+        } catch {
+          // If parsing fails, still try to refresh
+          loadProgress();
+        }
+      });
+
       es.addEventListener("error", () => {
         setErr("Realtime connection lost. Refresh page to reconnect.");
       });
@@ -328,20 +382,14 @@ export default function RoomClient({
       setErr("Unable to start realtime stream.");
     }
 
-    function onStorage(e: StorageEvent) {
-      if (e.key === unlockStoreKey) refreshUnlocks();
-    }
-    window.addEventListener("storage", onStorage);
-
     return () => {
       try {
         streamRef.current?.close();
       } catch {}
       streamRef.current = null;
-      window.removeEventListener("storage", onStorage);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [caseMeta.roomStream, unlockStoreKey]);
+  }, [caseMeta.roomStream, caseMeta.roomApi, caseMeta.progressApi]);
 
   async function post() {
     const t = text.trim();
@@ -369,15 +417,6 @@ export default function RoomClient({
       setErr("Network error.");
     } finally {
       setBusy(false);
-    }
-  }
-
-  function submitUnlock() {
-    const result = applyEvidenceUnlock(unlockStoreKey, unlockCode);
-    setUnlockMsg(result.message);
-    if (result.ok) {
-      refreshUnlocks();
-      setUnlockCode("");
     }
   }
 
@@ -414,9 +453,9 @@ export default function RoomClient({
               <div className="min-w-0">
                 <div className="font-semibold truncate">{username}</div>
                 <div className="text-sm text-slate-300">
-                  Badge: <span className="font-mono text-slate-200">{badge || "ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬"}</span>
+                  Badge: <span className="font-mono text-slate-200">{badge || "—"}</span>
                 </div>
-                <div className="text-xs text-slate-400">{providerText ? `Provider: ${providerText}` : "Provider: ÃƒÂ¢Ã¢â€šÂ¬Ã¢â‚¬"}</div>
+                <div className="text-xs text-slate-400">{providerText ? `Provider: ${providerText}` : "Provider: —"}</div>
               </div>
             </div>
 
@@ -459,7 +498,7 @@ export default function RoomClient({
               <div>
                 Posts loaded: <span className="font-mono">{posts.length}</span>
               </div>
-              <div className="text-xs text-slate-500">Realtime stream active. Messages appear instantly.</div>
+              <div className="text-xs text-slate-500">Realtime stream active. Unlocks + messages should appear instantly.</div>
 
               <button
                 type="button"
@@ -475,35 +514,6 @@ export default function RoomClient({
             </div>
           </Panel>
         </div>
-
-        <Panel title="Case Access Console - Evidence Unlock">
-          <div className="text-sm text-slate-200">
-            If an item is sealed, solve the clue and submit the solution here. Successful solutions unlock the next material on this device.
-          </div>
-
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
-            <input
-              value={unlockCode}
-              onChange={(e) => setUnlockCode(e.target.value)}
-              placeholder="Enter solution (e.g. MKELLS)"
-              className="w-full rounded-xl bg-slate-950/60 border border-slate-800 px-4 py-3 outline-none focus:border-slate-600"
-            />
-            <button
-              onClick={submitUnlock}
-              className="rounded-xl border border-slate-700 hover:bg-slate-900 transition px-4 py-3 font-medium"
-              type="button"
-            >
-              Submit Solution
-            </button>
-            <div className="text-xs text-slate-500 flex items-center">
-              Tip: post findings with links after unlocking (copy the Evidence URL from the list below).
-            </div>
-          </div>
-
-          {unlockMsg ? (
-            <div className="rounded-xl border border-slate-800 bg-slate-950/40 px-4 py-3 text-sm text-slate-200">{unlockMsg}</div>
-          ) : null}
-        </Panel>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Panel title="Case Access - Evidence">
@@ -533,7 +543,6 @@ export default function RoomClient({
                       <div className="text-xs text-slate-400 truncate">
                         {e.state === "available" ? e.label : "SEALED REGISTER ENTRY"}
                       </div>
-                      {e.state === "locked" ? <ClueBlock id={e.id} /> : null}
                     </div>
 
                     <StatusPill state={e.state} />
@@ -544,7 +553,12 @@ export default function RoomClient({
   <Link key={e.id} href={e.href} className="block">
     {card}
   </Link>
-);})}
+);
+              })}
+            </div>
+
+            <div className="pt-3 text-xs text-slate-500">
+              Unlock sealed evidence from within the evidence pages using the Case Access Terminal. Unlocks are shared across your room instance.
             </div>
           </Panel>
 
@@ -563,9 +577,7 @@ export default function RoomClient({
                   <StatusPill state={r.state} />
                 </div>
               ))}
-              <div className="pt-2 text-xs text-slate-500">
-                Recovered materials unlock later via retrieval keys embedded in the official case file.
-              </div>
+              <div className="pt-2 text-xs text-slate-500">Recovered materials unlock later via retrieval keys embedded in the official case file.</div>
             </div>
           </Panel>
         </div>
@@ -595,26 +607,31 @@ export default function RoomClient({
 
           <Panel title="Findings Thread">
             <div className="space-y-2">
-              {posts.length === 0 ? (
-                <div className="text-sm text-slate-400">No posts yet. Add the first finding to initialize the room.</div>
-              ) : null}
+              {posts.length === 0 ? <div className="text-sm text-slate-400">No posts yet. Add the first finding to initialize the room.</div> : null}
 
               {posts.slice(0, 50).map((p) => {
                 const mine = p.who === username;
+                const system = p.who === "System";
 
                 return (
                   <div key={p.id} className={`flex ${mine ? "justify-end" : "justify-start"}`}>
                     <div
                       className={[
                         "max-w-[85%] rounded-2xl border px-4 py-3",
-                        mine ? "border-blue-900/60 bg-blue-950/25" : "border-slate-800 bg-slate-950/40",
+                        system
+                          ? "border-emerald-900/60 bg-emerald-950/15"
+                          : mine
+                          ? "border-blue-900/60 bg-blue-950/25"
+                          : "border-slate-800 bg-slate-950/40",
                       ].join(" ")}
                     >
                       <div className="flex items-center justify-between gap-4">
-                        <div className="text-sm font-medium">{p.who}</div>
+                        <div className="text-sm font-medium">{system ? "SCIB SYSTEM" : p.who}</div>
                         <div className="text-xs text-slate-500">{new Date(p.ts).toLocaleString()}</div>
                       </div>
-                      <div className="text-sm text-slate-200 mt-2 whitespace-pre-wrap">{p.text}</div>
+                      <div className="text-sm text-slate-200 mt-2 whitespace-pre-wrap">
+                        {renderPostTextWithEvidenceLink(p.text)}
+                      </div>
                     </div>
                   </div>
                 );
@@ -648,10 +665,6 @@ export default function RoomClient({
                 </button>
               </div>
 
-              <p className="text-sm text-slate-300">
-                Phase 2: this panel will generate a room link you can send via WhatsApp, SMS, or Email.
-              </p>
-
               <div className="rounded-xl border border-slate-800 bg-slate-900/30 p-4 text-xs text-slate-400">
                 Current instance: <span className="font-mono text-slate-200">{instanceId}</span>
               </div>
@@ -676,15 +689,10 @@ export default function RoomClient({
                   </button>
                 </div>
 
-                <div className="text-xs text-slate-500">
-                  Send this link to friends. It sets the shared instance and redirects into the room.
-                </div>
+                <div className="text-xs text-slate-500">Send this link to friends. It sets the shared instance and redirects into the room.</div>
 
                 <div className="text-xs">
-                  <Link
-                    href={joinPath}
-                    className="underline underline-offset-4 decoration-slate-600 hover:decoration-slate-300 text-slate-300"
-                  >
+                  <Link prefetch={false} href={joinPath} className="underline underline-offset-4 decoration-slate-600 hover:decoration-slate-300 text-slate-300">
                     Open join link
                   </Link>
                 </div>
@@ -696,3 +704,4 @@ export default function RoomClient({
     </main>
   );
 }
+

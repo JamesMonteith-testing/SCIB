@@ -2,6 +2,12 @@
 import Link from "next/link";
 import { cookies } from "next/headers";
 
+function isUuid(v: string | undefined) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    (v || "").trim()
+  );
+}
+
 function Tag({ children }: { children: React.ReactNode }) {
   return (
     <span className="inline-flex items-center rounded-full border border-slate-700 bg-slate-950/40 px-3 py-1 text-xs text-slate-200">
@@ -67,7 +73,7 @@ function CaseRow({
       <div className="pt-4 flex items-center justify-between">
         <div className="text-xs text-slate-500">
           {unlocked
-            ? "Access granted. Click to enter investigation room."
+            ? "Access granted. Click to continue."
             : "Resolve previous case to gain access."}
         </div>
 
@@ -98,7 +104,17 @@ export default async function WelcomePage() {
   const name = jar.get("scib_name_v1")?.value ?? "Detective (Unregistered)";
   const badge = jar.get("scib_badge_v1")?.value ?? "SCIB-0000";
 
+  const instance = jar.get("scib_case01_instance_v1")?.value;
+  const hasInstance = isUuid(instance);
+
+  // Case availability (kept as-is for now)
   const case01Unlocked = true;
+
+  // IMPORTANT:
+  // Do NOT send users to /investigation-room unless they already have a valid UUID instance cookie.
+  // Otherwise they will bounce to /login -> /join(no code) and accidentally mint a NEW instance,
+  // which breaks shared-room testing and cross-browser sync.
+  const case01Href = hasInstance ? "/investigation-room" : "/cases/silent-switchboard";
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-6">
@@ -125,7 +141,6 @@ export default async function WelcomePage() {
 
         <section className="rounded-2xl border border-slate-800 bg-slate-900/30 p-6">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
-            {/* Left: Access status (no clutter) */}
             <div className="space-y-4">
               <div className="inline-flex items-center rounded-full border border-emerald-700/40 bg-emerald-950/15 px-3 py-1 text-xs text-emerald-200">
                 ACCESS GRANTED
@@ -146,12 +161,24 @@ export default async function WelcomePage() {
                 <span className="text-slate-200 font-medium">1</span>
               </div>
 
+              {!hasInstance ? (
+                <div className="rounded-xl border border-amber-900/40 bg-amber-950/10 px-4 py-3 text-xs text-amber-200">
+                  No active investigation instance on this browser yet.
+                  <div className="text-amber-200/80 mt-1">
+                    To join a shared room, open the join link from a teammate.
+                  </div>
+                </div>
+              ) : (
+                <div className="rounded-xl border border-emerald-900/40 bg-emerald-950/10 px-4 py-3 text-xs text-emerald-200">
+                  Active instance detected. You can enter the investigation room.
+                </div>
+              )}
+
               <p className="text-xs text-slate-500 pt-2">
                 Select an assigned investigation below to begin.
               </p>
             </div>
 
-            {/* Right: Badge panel (kept as-is) */}
             <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-4">
               <div className="text-xs text-slate-400 pb-3">
                 SCIB Identification
@@ -167,7 +194,6 @@ export default async function WelcomePage() {
                   priority
                 />
 
-                {/* Overlay dynamic identity */}
                 <div className="absolute inset-0 flex flex-col justify-center items-center text-center pointer-events-none">
                   <div className="text-sm text-slate-400 tracking-widest">
                     BADGE NUMBER
@@ -196,7 +222,7 @@ export default async function WelcomePage() {
           <div className="flex items-center justify-between">
             <div className="text-sm font-semibold">Assigned Investigations</div>
             <div className="text-xs text-slate-500">
-              Click an unlocked case to enter
+              Click an unlocked case to continue
             </div>
           </div>
 
@@ -206,7 +232,7 @@ export default async function WelcomePage() {
               caseId="CASE 01"
               title="The Silent Switchboard"
               subtitle="SCIB-CC-1991-022 • West Harrow Exchange"
-              href="/investigation-room"
+              href={case01Href}
             />
 
             <CaseRow

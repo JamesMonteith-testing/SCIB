@@ -14,6 +14,12 @@ function isNonEmpty(v: string | undefined) {
   return !!(v && v.trim().length > 0);
 }
 
+function isUuid(v: string | undefined) {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    (v || "").trim()
+  );
+}
+
 export default async function LoginPage() {
   const jar = await cookies();
 
@@ -24,9 +30,14 @@ export default async function LoginPage() {
   const hasActiveIdentity =
     isProvider(provider) && isNonEmpty(name) && isNonEmpty(badge);
 
-  // A/C: registered + same provider + same device => immediate redirect
+  // UUID-only rule: identity alone is not enough to enter the room.
+  // If identity exists but instance cookie is missing/invalid, we must go through join to mint/set it.
   if (hasActiveIdentity) {
-    redirect("/welcome");
+    const instance = jar.get("scib_case01_instance_v1")?.value;
+    if (isUuid(instance)) {
+      redirect("/investigation-room");
+    }
+    redirect("/cases/silent-switchboard/join");
   }
 
   // Not recognized => show login UI
