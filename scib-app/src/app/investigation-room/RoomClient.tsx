@@ -270,15 +270,43 @@ export default function RoomClient({
     }));
   }, [evidenceCatalog, unlockedEvidence]);
 
-  const recoveredItems = useMemo(
-    () => [
-      { id: "REC-01", label: "Access Logs Extended", href: "/cases/silent-switchboard/recovered", state: "locked" as const },
-      { id: "REC-02", label: "Internal Messages Pager", href: "/cases/silent-switchboard/recovered", state: "locked" as const },
-      { id: "REC-03", label: "Contractor Records", href: "/cases/silent-switchboard/recovered", state: "locked" as const },
-      { id: "REC-04", label: "SCIB Internal Memo", href: "/cases/silent-switchboard/recovered", state: "locked" as const },
-    ],
-    []
-  );
+  const recoveredItems = useMemo(() => {
+  const unlockedSet = new Set(unlockedEvidence.map((s) => s.toUpperCase()));
+
+  const recoveredUnlocks = {
+    "REC-01": unlockedSet.has("E-03"),
+    "REC-02": unlockedSet.has("E-06"),
+    "REC-03": unlockedSet.has("E-05"),
+    "REC-04": unlockedSet.has("E-04"),
+  } as const;
+
+  return [
+    {
+      id: "REC-01",
+      label: "Access Logs Extended",
+      href: "/cases/silent-switchboard/recovered/rec-01",
+      state: recoveredUnlocks["REC-01"] ? ("available" as const) : ("locked" as const),
+    },
+    {
+      id: "REC-02",
+      label: "Internal Messages Pager",
+      href: "/cases/silent-switchboard/recovered/rec-02",
+      state: recoveredUnlocks["REC-02"] ? ("available" as const) : ("locked" as const),
+    },
+    {
+      id: "REC-03",
+      label: "Contractor Records",
+      href: "/cases/silent-switchboard/recovered/rec-03",
+      state: recoveredUnlocks["REC-03"] ? ("available" as const) : ("locked" as const),
+    },
+    {
+      id: "REC-04",
+      label: "SCIB Internal Memo",
+      href: "/cases/silent-switchboard/recovered/rec-04",
+      state: recoveredUnlocks["REC-04"] ? ("available" as const) : ("locked" as const),
+    },
+  ];
+}, [unlockedEvidence]);
 
   async function loadInitial() {
     setErr(null);
@@ -482,14 +510,7 @@ export default function RoomClient({
                   className="rounded-xl border border-slate-700 hover:bg-slate-900 transition px-4 py-2 text-sm font-medium text-center"
                 >
                   Evidence List
-                </Link>
-                <Link
-                  href="/cases/silent-switchboard/recovered"
-                  className="rounded-xl border border-slate-700 hover:bg-slate-900 transition px-4 py-2 text-sm font-medium text-center"
-                >
-                  Recovery Terminal
-                </Link>
-              </div>
+                </Link></div>
             </div>
           </Panel>
 
@@ -560,27 +581,7 @@ export default function RoomClient({
             <div className="pt-3 text-xs text-slate-500">
               Unlock sealed evidence from within the evidence pages using the Case Access Terminal. Unlocks are shared across your room instance.
             </div>
-          </Panel>
-
-          <Panel title="Case Access - Recovered Materials">
-            <div className="space-y-2">
-              {recoveredItems.map((r) => (
-                <div key={r.id} className="flex items-center justify-between gap-3 rounded-xl border border-slate-800 bg-slate-950/30 px-4 py-3">
-                  <div className="min-w-0">
-                    <div className="text-sm font-medium">
-                      <Link className="underline underline-offset-4 decoration-slate-700 hover:decoration-slate-300" href={r.href}>
-                        {r.id}
-                      </Link>
-                    </div>
-                    <div className="text-xs text-slate-400 truncate">{r.label}</div>
-                  </div>
-                  <StatusPill state={r.state} />
-                </div>
-              ))}
-              <div className="pt-2 text-xs text-slate-500">Recovered materials unlock later via retrieval keys embedded in the official case file.</div>
-            </div>
-          </Panel>
-        </div>
+          </Panel></div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <Panel title="Post a Finding">
@@ -704,4 +705,6 @@ export default function RoomClient({
     </main>
   );
 }
+
+
 

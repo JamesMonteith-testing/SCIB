@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import CaseNavLinks from "@/components/CaseNavLinks";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 
 type RecKey = "REC-01" | "REC-02" | "REC-03" | "REC-04";
 
@@ -11,23 +11,19 @@ type SlotDef = {
   id: RecKey;
   label: string;
   href: string;
-  accepts: string[]; // accepted codes (normalized)
 };
 
-type LogEntry = {
-  id: string;
-  ts: number;
-  text: string;
+type ProgressState = {
+  unlockedEvidence?: string[];
+  solved?: boolean;
 };
 
-function normalize(input: string) {
-  return input
-    .trim()
-    .toUpperCase()
-    .replace(/[’‘]/g, "'")
-    .replace(/[–—]/g, "-")
-    .replace(/\s*\+\s*/g, " + ")
-    .replace(/\s+/g, " ");
+function Tag({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="inline-flex items-center rounded-full border border-slate-700 bg-slate-950/40 px-3 py-1 text-xs text-slate-200">
+      {children}
+    </span>
+  );
 }
 
 function Slot({
@@ -74,17 +70,36 @@ function Slot({
   );
 }
 
-function timeHHMM(ts: number) {
-  try {
-    const d = new Date(ts);
-    return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
-  } catch {
-    return "--:--";
-  }
+function hasUnlocked(state: ProgressState | null, id: string) {
+  const set = new Set((state?.unlockedEvidence || []).map((x) => String(x).toUpperCase()));
+  return set.has(id.toUpperCase());
 }
 
-function uid() {
-  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+/*
+Central rule map
+Future cases only edit this section
+*/
+const RECOVERED_UNLOCK_RULES: Record<RecKey, string> = {
+  "REC-01": "E-03",
+  "REC-02": "E-06",
+  "REC-03": "E-05",
+  "REC-04": "E-04",
+};
+
+function deriveRecoveredUnlocks(state: ProgressState | null): Record<RecKey, boolean> {
+  const result: Record<RecKey, boolean> = {
+    "REC-01": false,
+    "REC-02": false,
+    "REC-03": false,
+    "REC-04": false,
+  };
+
+  for (const key of Object.keys(RECOVERED_UNLOCK_RULES) as RecKey[]) {
+    const evidenceId = RECOVERED_UNLOCK_RULES[key];
+    result[key] = hasUnlocked(state, evidenceId);
+  }
+
+  return result;
 }
 
 export default function Page() {
@@ -94,42 +109,27 @@ export default function Page() {
         id: "REC-01",
         label: "Access Logs (Extended)",
         href: "/cases/silent-switchboard/recovered/rec-01",
-        accepts: [
-          normalize("WHX/OPS + 1991-022-03"),
-          normalize("WHX/OPS 1991-022-03"),
-          normalize("1991-022-03"),
-          normalize("1991-022-3"),
-        ],
       },
       {
         id: "REC-02",
         label: "Internal Messages (Pager)",
         href: "/cases/silent-switchboard/recovered/rec-02",
-        accepts: [normalize("PAGER/WHX/1991"), normalize("PAGER WHX 1991")],
       },
       {
         id: "REC-03",
         label: "Contractor Records",
         href: "/cases/silent-switchboard/recovered/rec-03",
-        accepts: [normalize("BAINES-J"), normalize("BAINES J")],
       },
       {
         id: "REC-04",
         label: "SCIB Internal Memo",
         href: "/cases/silent-switchboard/recovered/rec-04",
-        accepts: [normalize("DON'T TRUST THE SWITCHBOARD"), normalize("DONT TRUST THE SWITCHBOARD")],
       },
     ],
     []
   );
 
-  const storageKey = "scib_unlocks_silent_switchboard_v1";
-  const logKey = "scib_room_access_log_silent_switchboard_v1";
-
-  const [code, setCode] = useState("");
-  const [status, setStatus] = useState("SYSTEM STATE: STANDBY");
-  const [loaded, setLoaded] = useState(false);
-
+  const [progressState, setProgressState] = useState<ProgressState | null>(null);
   const [unlocked, setUnlocked] = useState<Record<RecKey, boolean>>({
     "REC-01": false,
     "REC-02": false,
@@ -137,151 +137,53 @@ export default function Page() {
     "REC-04": false,
   });
 
-  const [roomLog, setRoomLog] = useState<LogEntry[]>([]);
+  const esRef = useRef<EventSource | null>(null);
 
-  // Load unlocks first
-  useEffect(() => {
+  async function loadProgressSnapshot() {
     try {
-      const raw = localStorage.getItem(storageKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (parsed && typeof parsed === "object") {
-          setUnlocked((prev) => ({ ...prev, ...parsed }));
-        }
-      }
-    } catch {
-      // ignore
-    } finally {
-      setLoaded(true);
-    }
-  }, []);
+      const res = await fetch("/api/room/case01/progress", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok || !data?.state) return;
 
-  // Only save AFTER we've loaded, so we never overwrite stored unlocks with defaults
+      const state = data.state as ProgressState;
+
+      setProgressState(state);
+      setUnlocked(deriveRecoveredUnlocks(state));
+    } catch {}
+  }
+
   useEffect(() => {
-    if (!loaded) return;
+    loadProgressSnapshot();
+
     try {
-      localStorage.setItem(storageKey, JSON.stringify(unlocked));
-    } catch {
-      // ignore
-    }
-  }, [loaded, unlocked]);
+      const es = new EventSource("/api/room/case01/stream");
+      esRef.current = es;
 
-  // Load access log
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem(logKey);
-      if (raw) {
-        const parsed = JSON.parse(raw);
-        if (Array.isArray(parsed)) {
-          const cleaned = parsed
-            .filter((x) => x && typeof x === "object" && typeof x.ts === "number" && typeof x.text === "string")
-            .map((x) => ({ id: typeof x.id === "string" ? x.id : uid(), ts: x.ts, text: x.text }));
-          setRoomLog(cleaned.slice(-20));
-        }
-      }
-    } catch {
-      // ignore
-    }
-  }, []);
-
-  // Persist access log
-  useEffect(() => {
-    try {
-      localStorage.setItem(logKey, JSON.stringify(roomLog.slice(-20)));
-    } catch {
-      // ignore
-    }
-  }, [roomLog]);
-
-  // Keep multiple tabs in sync
-  useEffect(() => {
-    function onStorage(e: StorageEvent) {
-      if (e.key === logKey && e.newValue) {
+      es.addEventListener("progress", (evt) => {
         try {
-          const parsed = JSON.parse(e.newValue);
-          if (Array.isArray(parsed)) {
-            const cleaned = parsed
-              .filter((x) => x && typeof x === "object" && typeof x.ts === "number" && typeof x.text === "string")
-              .map((x) => ({ id: typeof x.id === "string" ? x.id : uid(), ts: x.ts, text: x.text }));
-            setRoomLog(cleaned.slice(-20));
-          }
-        } catch {
-          // ignore
-        }
-      }
-      if (e.key === storageKey && e.newValue) {
-        try {
-          const parsed = JSON.parse(e.newValue);
-          if (parsed && typeof parsed === "object") {
-            setUnlocked((prev) => ({ ...prev, ...parsed }));
-          }
-        } catch {
-          // ignore
-        }
-      }
-    }
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+          const payload = JSON.parse((evt as MessageEvent).data) as { state?: ProgressState };
+
+          const state = payload?.state || null;
+
+          setProgressState(state);
+          setUnlocked(deriveRecoveredUnlocks(state));
+        } catch {}
+      });
+
+      es.addEventListener("error", () => {
+        window.setTimeout(() => {
+          loadProgressSnapshot();
+        }, 800);
+      });
+    } catch {}
+
+    return () => {
+      try {
+        esRef.current?.close();
+      } catch {}
+      esRef.current = null;
+    };
   }, []);
-
-  function appendLog(text: string) {
-    const entry: LogEntry = { id: uid(), ts: Date.now(), text };
-    setRoomLog((prev) => [...prev.slice(-19), entry]);
-  }
-
-  function gentleNudge(n: string) {
-    // "Human" partials — brief and not procedural-heavy.
-    const hasStamp = n.includes("WHX/OPS");
-    const hasIndex = n.includes("1991-022-03") || n.includes("1991-022-3");
-    const hasPager = n.includes("PAGER");
-    const hasPhrase = n.includes("SWITCHBOARD");
-    const hasNameish = /^[A-Z]+[-\s][A-Z]$/.test(n) || n.includes("BAINES");
-
-    if (hasStamp && !hasIndex) return "Close — exchange stamp recognised. A second reference is usually appended.";
-    if (!hasStamp && hasIndex) return "Reference recognised. Try pairing it with the exchange stamp from the file.";
-    if (hasPager && !n.includes("WHX") && !n.includes("1991")) return "Close — pager index recognised. It usually includes location/year.";
-    if (hasPhrase) return "Close — warning phrase detected. Check punctuation and spacing from the source artefact.";
-    if (hasNameish) return "Close — personnel-style identifier detected. Check exact format in the recovered index.";
-    return "No match found for that reference.";
-  }
-
-  function submit() {
-    const n = normalize(code);
-
-    if (!n) {
-      setStatus("SYSTEM STATE: STANDBY");
-      return;
-    }
-
-    appendLog(`Attempt recorded: "${n}"`);
-
-    const match = slots.find((s) => s.accepts.includes(n));
-    if (!match) {
-      const msg = gentleNudge(n);
-      setStatus(msg);
-      appendLog(msg);
-      setCode("");
-      return;
-    }
-
-    if (unlocked[match.id]) {
-      const msg = `${match.id} already unsealed.`;
-      setStatus(msg);
-      appendLog(msg);
-      setCode("");
-      return;
-    }
-
-    setUnlocked((prev) => ({ ...prev, [match.id]: true }));
-    setStatus(`Retrieval accepted. ${match.id} unsealed.`);
-    appendLog(`Retrieval accepted. ${match.id} unsealed.`);
-    setCode("");
-  }
-
-  function clear() {
-    setCode("");
-    setStatus("SYSTEM STATE: STANDBY");
-  }
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-6">
@@ -296,86 +198,37 @@ export default function Page() {
             </div>
           </div>
 
-          <CaseNavLinks caseHref="/cases/silent-switchboard" contextHref="/cases/silent-switchboard" contextLabel="Back to Case" />
+          <CaseNavLinks
+            caseHref="/cases/silent-switchboard"
+            contextHref="/cases/silent-switchboard"
+            contextLabel="Back to Case"
+          />
         </header>
 
         <section className="rounded-2xl border border-slate-800 bg-slate-900/30 p-6 space-y-3">
           <p className="text-sm text-slate-200 leading-relaxed">
             This directory contains materials added to the case file after initial closure.
           </p>
+
           <p className="text-sm text-slate-200 leading-relaxed">
-            Access is restricted to officers with procedural knowledge of the case.
+            Recovered items appear automatically when associated evidence is unlocked during the investigation.
           </p>
-          <p className="text-xs text-slate-500">Improper access attempts are logged.</p>
+
+          <p className="text-xs text-slate-500">
+            Visibility is scoped to the current investigation instance.
+          </p>
         </section>
 
-        <section className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <section className="rounded-2xl border border-slate-800 bg-slate-950/40 p-5 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <h2 className="text-base font-semibold">Recovered Materials</h2>
+            <Tag>INSTANCE-SCOPED</Tag>
+          </div>
+
           <div className="space-y-3">
             {slots.map((s) => (
               <Slot key={s.id} id={s.id} label={s.label} href={s.href} locked={!unlocked[s.id]} />
             ))}
-          </div>
-
-          <div className="rounded-2xl border border-slate-800 bg-slate-950/40 p-5 space-y-4">
-            <div className="text-xs text-slate-400">RETRIEVAL CONSOLE</div>
-
-            <div className="rounded-lg border border-slate-700 bg-black px-4 py-3 font-mono text-sm text-slate-200 flex items-center gap-2">
-              <span className="text-slate-400">&gt;</span>
-              <input
-                value={code}
-                onChange={(e) => setCode(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Enter") submit();
-                }}
-                placeholder="ENTER AUTHORIZATION STRING"
-                className="w-full bg-transparent outline-none placeholder:text-slate-500"
-              />
-            </div>
-
-            <div className="flex gap-3">
-              <button
-                onClick={submit}
-                className="flex-1 rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-900 transition"
-              >
-                SUBMIT
-              </button>
-              <button
-                onClick={clear}
-                className="flex-1 rounded-xl border border-slate-700 px-4 py-2 text-sm hover:bg-slate-900 transition"
-              >
-                CLEAR
-              </button>
-            </div>
-
-            <div className="text-xs text-slate-500 pt-1">STATUS: {status}</div>
-
-            <div className="rounded-xl border border-slate-800 bg-slate-950/30 p-4">
-              <div className="text-xs text-slate-400 mb-3">ACCESS LOG (ROOM)</div>
-
-              {roomLog.length === 0 ? (
-                <div className="text-sm text-slate-300">
-                  No access attempts recorded in this session.
-                </div>
-              ) : (
-                <div className="space-y-2">
-                  {roomLog
-                    .slice()
-                    .reverse()
-                    .slice(0, 8)
-                    .map((e) => (
-                      <div key={e.id} className="text-sm text-slate-200">
-                        <span className="font-mono text-slate-400">{timeHHMM(e.ts)}</span>
-                        <span className="text-slate-500"> — </span>
-                        <span>{e.text}</span>
-                      </div>
-                    ))}
-                </div>
-              )}
-
-              <div className="pt-3 text-xs text-slate-500">
-                Note: keys are derived from artefacts already present in the case file.
-              </div>
-            </div>
           </div>
         </section>
       </div>
