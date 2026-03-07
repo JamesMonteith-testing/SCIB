@@ -114,7 +114,7 @@ export default async function WelcomePage() {
   // Do NOT send users to /investigation-room unless they already have a valid UUID instance cookie.
   // Otherwise they will bounce to /login -> /join(no code) and accidentally mint a NEW instance,
   // which breaks shared-room testing and cross-browser sync.
-  const case01Href = hasInstance ? "/investigation-room" : "/cases/silent-switchboard";
+  const case01Href = hasInstance ? "/investigation-room" : "/cases/silent-switchboard/start";
 
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-6">
@@ -261,3 +261,4 @@ export default async function WelcomePage() {
     </main>
   );
 }
+

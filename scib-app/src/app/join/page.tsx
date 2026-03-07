@@ -36,9 +36,10 @@ export default function JoinPage() {
         return;
       }
 
-      // Keep a non-authoritative copy for UI display
+      // Remove any legacy client-side identity storage
       try {
-        localStorage.setItem("scib_username_display_v1", data.username);
+        localStorage.removeItem("scib_username_display_v1");
+        sessionStorage.clear();
       } catch {}
 
       router.push("/investigation-room");

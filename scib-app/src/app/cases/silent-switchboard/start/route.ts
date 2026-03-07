@@ -15,25 +15,13 @@ function getPublicOrigin(req: Request) {
   return new URL(req.url).origin;
 }
 
-function isUuidLike(v: string) {
-  const s = (v || "").trim().toLowerCase();
-  return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/.test(s);
-}
-
 export async function GET(req: Request) {
-  const url = new URL(req.url);
-  const rawCode = (url.searchParams.get("code") || "").trim();
-
   const origin = getPublicOrigin(req);
   const jar = await cookies();
 
-  // Join route is for joining an existing investigation only.
-  // Do NOT mint a new instance here when code is missing/invalid.
-  if (!isUuidLike(rawCode)) {
-    return NextResponse.redirect(`${origin}/welcome`);
-  }
+  const instanceId = crypto.randomUUID();
 
-  jar.set("scib_case01_instance_v1", rawCode, {
+  jar.set("scib_case01_instance_v1", instanceId, {
     httpOnly: true,
     sameSite: "lax",
     path: "/",

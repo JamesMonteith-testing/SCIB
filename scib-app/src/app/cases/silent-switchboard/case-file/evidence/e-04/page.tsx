@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -28,61 +28,20 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
 const PDF_SRC = "/evidence/SCIB-CC-1991-022/E-04/E-04_Evidence_Sheet.pdf";
 const PHOTO_SRC = "/evidence/SCIB-CC-1991-022/E-04/E-04_Photo_EvidenceBag.png";
 
-/**
- * Compatibility:
- * Evidence List still reads localStorage scib_case01_unlocked_evidence_v1.
- * We keep writing to it so the UI stays consistent while migration completes.
- */
-const UNLOCK_STORE_KEY = "scib_case01_unlocked_evidence_v1";
-
 function normalizeCode(raw: string) {
   return (raw || "")
     .trim()
     .toUpperCase()
-    .replace(/[’]/g, "'")
+    .replace(/[’']/g, "'")
     .replace(/[^A-Z0-9\/\-\+\s']/g, "")
     .replace(/\s+/g, " ")
     .trim();
 }
 
-function readUnlockedLocal(): string[] {
-  try {
-    const raw = localStorage.getItem(UNLOCK_STORE_KEY);
-    if (!raw) return ["E-01", "E-02"];
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.every((x) => typeof x === "string")) {
-      const base = new Set(["E-01", "E-02", ...parsed.map((s) => s.toUpperCase())]);
-      return Array.from(base);
-    }
-    return ["E-01", "E-02"];
-  } catch {
-    return ["E-01", "E-02"];
-  }
-}
-
-function writeUnlockedLocal(ids: string[]) {
-  const base = new Set(["E-01", "E-02", ...ids.map((s) => s.toUpperCase())]);
-  localStorage.setItem(UNLOCK_STORE_KEY, JSON.stringify(Array.from(base)));
-}
-
-function addUnlockLocal(id: string) {
-  const current = readUnlockedLocal();
-  const next = Array.from(new Set([...current, id.toUpperCase()]));
-  writeUnlockedLocal(next);
-}
-
-// Accepted solutions (NOT shown in UI)
 const ACCEPT_1 = "DON'T TRUST THE SWITCHBOARD";
 const ACCEPT_2 = "DONT TRUST THE SWITCHBOARD";
 
 type TermStatus = "idle" | "running" | "granted" | "denied";
-
-function formatBar(pct: number) {
-  const width = 28;
-  const filled = Math.max(0, Math.min(width, Math.round((pct / 100) * width)));
-  const empty = width - filled;
-  return `[${"#".repeat(filled)}${".".repeat(empty)}] ${pct.toString().padStart(3, " ")}%`;
-}
 
 type ProgressState = {
   unlockedEvidence?: string[];
@@ -94,11 +53,17 @@ function hasUnlocked(state: ProgressState | null, id: string) {
   return set.has(id.toUpperCase());
 }
 
+function formatBar(pct: number) {
+  const width = 28;
+  const filled = Math.max(0, Math.min(width, Math.round((pct / 100) * width)));
+  const empty = width - filled;
+  return `[${"#".repeat(filled)}${".".repeat(empty)}] ${pct.toString().padStart(3, " ")}%`;
+}
+
 export default function Page() {
   const [progressState, setProgressState] = useState<ProgressState | null>(null);
   const [ok, setOk] = useState(false);
 
-  // Terminal state
   const [code, setCode] = useState("");
   const [status, setStatus] = useState<TermStatus>("idle");
   const [lines, setLines] = useState<string[]>([
@@ -130,20 +95,16 @@ export default function Page() {
     try {
       const res = await fetch("/api/room/case01/progress", { cache: "no-store" });
       const data = await res.json().catch(() => null);
-      if (!res.ok || !data?.state) return;
+      if (!res.ok || !data?.ok || !data?.state) return;
       const state = data.state as ProgressState;
       setProgressState(state);
       setOk(hasUnlocked(state, "E-04"));
-    } catch {
-      // ignore
-    }
+    } catch {}
   }
 
   useEffect(() => {
-    // Initial server snapshot
     loadProgressSnapshot();
 
-    // SSE subscription for live shared updates (progress events)
     try {
       const es = new EventSource("/api/room/case01/stream");
       esRef.current = es;
@@ -157,25 +118,12 @@ export default function Page() {
         } catch {}
       });
 
-      // In case server restarts and we miss an event, refresh snapshot after reconnect.
       es.addEventListener("error", () => {
-        // Don’t spam; just attempt a single delayed refresh.
         window.setTimeout(() => {
           loadProgressSnapshot();
         }, 800);
       });
-    } catch {
-      // If SSE fails in some contexts, page still works via POST success path.
-    }
-
-    // Local storage sync (compat only; lets this tab respond if another tab writes local unlock)
-    function onStorage(e: StorageEvent) {
-      if (e.key === UNLOCK_STORE_KEY) {
-        const local = new Set(readUnlockedLocal().map((x) => x.toUpperCase()));
-        if (local.has("E-04")) setOk(true);
-      }
-    }
-    window.addEventListener("storage", onStorage);
+    } catch {}
 
     return () => {
       clearTimers();
@@ -183,9 +131,7 @@ export default function Page() {
         esRef.current?.close();
       } catch {}
       esRef.current = null;
-      window.removeEventListener("storage", onStorage);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const clueText = useMemo(() => {
@@ -198,7 +144,6 @@ export default function Page() {
   }, []);
 
   async function finalizeGrant(normalized: string) {
-    // Server-authoritative write
     try {
       const res = await fetch("/api/room/case01/progress", {
         method: "POST",
@@ -213,23 +158,17 @@ export default function Page() {
       const data = await res.json().catch(() => null);
 
       if (res.ok && data?.ok) {
-        // Keep local list consistent for Evidence List UI
-        addUnlockLocal("E-04");
-        // Trust returned state if present
         const state = (data?.state || null) as ProgressState | null;
         if (state) {
           setProgressState(state);
           setOk(hasUnlocked(state, "E-04"));
         } else {
-          setOk(true);
+          await loadProgressSnapshot();
         }
         return true;
       }
-    } catch {
-      // ignore
-    }
+    } catch {}
 
-    // If server call fails in dev, do NOT silently unlock (server-authoritative).
     return false;
   }
 
@@ -287,7 +226,6 @@ export default function Page() {
         return;
       }
 
-      // Success path: still must pass server validation
       pushLine("");
       pushLine("ACCESS GRANTED");
       pushLine("EVIDENCE UNSEALED: E-04");
@@ -298,7 +236,6 @@ export default function Page() {
         setStatus("granted");
         setCode("");
       } else {
-        // If server rejects, we roll it back visually (authoritative).
         pushLine("");
         pushLine("SERVER REJECTED TOKEN");
         pushLine("STATUS: NO CHANGE COMMITTED");
@@ -455,7 +392,6 @@ export default function Page() {
               </div>
             </div>
 
-            {/* Retro terminal */}
             <div className="mt-2 scib-term">
               <div className="relative p-5 space-y-4">
                 <div className="scib-term-text text-xs scib-term-dim">

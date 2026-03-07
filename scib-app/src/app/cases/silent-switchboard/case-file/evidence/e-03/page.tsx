@@ -1,4 +1,4 @@
-"use client";
+﻿"use client";
 
 import Image from "next/image";
 import Link from "next/link";
@@ -28,12 +28,6 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
 const PDF_SRC = "/evidence/SCIB-CC-1991-022/E-03/E-03_Evidence_Sheet.pdf";
 const PHOTO_SRC = "/evidence/SCIB-CC-1991-022/E-03/E-03_Photo_EvidenceBag.png";
 
-/**
- * Local compatibility:
- * Evidence List uses scib_case01_unlocked_evidence_v1. We keep writing to it so the UI stays consistent.
- */
-const UNLOCK_STORE_KEY = "scib_case01_unlocked_evidence_v1";
-
 function normalizeCode(raw: string) {
   return (raw || "")
     .trim()
@@ -44,42 +38,20 @@ function normalizeCode(raw: string) {
     .trim();
 }
 
-function readUnlocked(): string[] {
-  try {
-    const raw = localStorage.getItem(UNLOCK_STORE_KEY);
-    if (!raw) return ["E-01", "E-02"];
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.every((x) => typeof x === "string")) {
-      const base = new Set(["E-01", "E-02", ...parsed.map((s) => s.toUpperCase())]);
-      return Array.from(base);
-    }
-    return ["E-01", "E-02"];
-  } catch {
-    return ["E-01", "E-02"];
-  }
-}
-
-function writeUnlocked(ids: string[]) {
-  const base = new Set(["E-01", "E-02", ...ids.map((s) => s.toUpperCase())]);
-  localStorage.setItem(UNLOCK_STORE_KEY, JSON.stringify(Array.from(base)));
-}
-
-function isUnlocked(id: string) {
-  const set = new Set(readUnlocked().map((x) => x.toUpperCase()));
-  return set.has(id.toUpperCase());
-}
-
-function addUnlock(id: string) {
-  const current = readUnlocked();
-  const next = Array.from(new Set([...current, id.toUpperCase()]));
-  writeUnlocked(next);
-}
-
-// Accepted solutions (not shown in UI)
 const ACCEPT_1 = "WHX/OPS 1991-022-03";
 const ACCEPT_2 = "WHX/OPS+1991-022-03";
 
 type TermStatus = "idle" | "running" | "granted" | "denied";
+
+type ProgressState = {
+  unlockedEvidence?: string[];
+  solved?: boolean;
+};
+
+function hasUnlocked(state: ProgressState | null, id: string) {
+  const set = new Set((state?.unlockedEvidence || []).map((x) => String(x).toUpperCase()));
+  return set.has(id.toUpperCase());
+}
 
 function formatBar(pct: number) {
   const width = 28;
@@ -89,9 +61,9 @@ function formatBar(pct: number) {
 }
 
 export default function Page() {
+  const [progressState, setProgressState] = useState<ProgressState | null>(null);
   const [ok, setOk] = useState(false);
 
-  // Terminal state
   const [code, setCode] = useState("");
   const [status, setStatus] = useState<TermStatus>("idle");
   const [lines, setLines] = useState<string[]>([
@@ -103,6 +75,7 @@ export default function Page() {
   const [progress, setProgress] = useState<number | null>(null);
 
   const timersRef = useRef<number[]>([]);
+  const esRef = useRef<EventSource | null>(null);
   const inputRef = useRef<HTMLInputElement | null>(null);
 
   function clearTimers() {
@@ -118,20 +91,46 @@ export default function Page() {
     setLines((prev) => [...prev, s].slice(-18));
   }
 
+  async function loadProgressSnapshot() {
+    try {
+      const res = await fetch("/api/room/case01/progress", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok || !data?.state) return;
+      const state = data.state as ProgressState;
+      setProgressState(state);
+      setOk(hasUnlocked(state, "E-03"));
+    } catch {}
+  }
+
   useEffect(() => {
-    setOk(isUnlocked("E-03"));
+    loadProgressSnapshot();
 
-    function onStorage(e: StorageEvent) {
-      if (e.key === UNLOCK_STORE_KEY) setOk(isUnlocked("E-03"));
-    }
+    try {
+      const es = new EventSource("/api/room/case01/stream");
+      esRef.current = es;
 
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
-  }, []);
+      es.addEventListener("progress", (evt) => {
+        try {
+          const payload = JSON.parse((evt as MessageEvent).data) as { state?: ProgressState };
+          const state = payload?.state || null;
+          setProgressState(state);
+          setOk(hasUnlocked(state, "E-03"));
+        } catch {}
+      });
 
-  useEffect(() => {
+      es.addEventListener("error", () => {
+        window.setTimeout(() => {
+          loadProgressSnapshot();
+        }, 800);
+      });
+    } catch {}
+
     return () => {
       clearTimers();
+      try {
+        esRef.current?.close();
+      } catch {}
+      esRef.current = null;
     };
   }, []);
 
@@ -145,8 +144,6 @@ export default function Page() {
   }, []);
 
   async function finalizeGrant(normalized: string) {
-    // Server-authoritative attempt (room progress API).
-    // If it isn't available / errors in dev, we still perform a local unlock so the flow works.
     try {
       const res = await fetch("/api/room/case01/progress", {
         method: "POST",
@@ -158,18 +155,21 @@ export default function Page() {
         }),
       });
 
-      if (res.ok) {
-        addUnlock("E-03");
-        setOk(true);
-        return;
-      }
-    } catch {
-      // fall through
-    }
+      const data = await res.json().catch(() => null);
 
-    // Local unlock fallback
-    addUnlock("E-03");
-    setOk(true);
+      if (res.ok && data?.ok) {
+        const state = (data?.state || null) as ProgressState | null;
+        if (state) {
+          setProgressState(state);
+          setOk(hasUnlocked(state, "E-03"));
+        } else {
+          await loadProgressSnapshot();
+        }
+        return true;
+      }
+    } catch {}
+
+    return false;
   }
 
   function runSequence(success: boolean, normalized: string) {
@@ -184,7 +184,6 @@ export default function Page() {
       `> TOKEN: ${normalized || "(empty)"}`,
     ]);
 
-    // Typing/boot-style output
     const schedule = (ms: number, fn: () => void) => {
       const id = window.setTimeout(fn, ms);
       timersRef.current.push(id);
@@ -213,24 +212,36 @@ export default function Page() {
     });
 
     schedule(baseAt + steps.length * 120 + 140, async () => {
-      if (success) {
-        pushLine("");
-        pushLine("ACCESS GRANTED");
-        pushLine("EVIDENCE UNSEALED: E-03");
-        setStatus("granted");
-
-        await finalizeGrant(normalized);
-
-        // tidy up
-        setCode("");
-      } else {
+      if (!success) {
         pushLine("");
         pushLine("ACCESS DENIED");
         pushLine("REASON: INVALID TOKEN");
         setStatus("denied");
+        schedule(160, () => {
+          setProgress(null);
+          try {
+            inputRef.current?.focus();
+          } catch {}
+        });
+        return;
       }
 
-      // allow next input
+      pushLine("");
+      pushLine("ACCESS GRANTED");
+      pushLine("EVIDENCE UNSEALED: E-03");
+
+      const granted = await finalizeGrant(normalized);
+
+      if (granted) {
+        setStatus("granted");
+        setCode("");
+      } else {
+        pushLine("");
+        pushLine("SERVER REJECTED TOKEN");
+        pushLine("STATUS: NO CHANGE COMMITTED");
+        setStatus("denied");
+      }
+
       schedule(160, () => {
         setProgress(null);
         try {
@@ -279,7 +290,6 @@ export default function Page() {
         }
 
         .scib-term::before {
-          /* scanlines */
           content: "";
           position: absolute;
           inset: 0;
@@ -295,7 +305,6 @@ export default function Page() {
         }
 
         .scib-term::after {
-          /* subtle vignette */
           content: "";
           position: absolute;
           inset: -20px;
@@ -383,7 +392,6 @@ export default function Page() {
               </div>
             </div>
 
-            {/* Retro terminal */}
             <div className="mt-2 scib-term">
               <div className="relative p-5 space-y-4">
                 <div className="scib-term-text text-xs scib-term-dim">
@@ -392,7 +400,7 @@ export default function Page() {
 
                 <div className="scib-term-text text-sm whitespace-pre-wrap leading-relaxed">
                   {lines.map((l, idx) => {
-                    const isResult = l === "ACCESS GRANTED" || l === "ACCESS DENIED";
+                    const isResult = l === "ACCESS GRANTED" || l === "ACCESS DENIED" || l === "SERVER REJECTED TOKEN";
                     return (
                       <div key={idx} className={isResult ? "scib-term-strong" : ""}>
                         {l === "" ? "\u00A0" : l}

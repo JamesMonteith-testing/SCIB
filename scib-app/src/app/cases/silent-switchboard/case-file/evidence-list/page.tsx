@@ -2,7 +2,7 @@
 
 import Image from "next/image";
 import Link from "next/link";
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import CaseNavLinks from "@/components/CaseNavLinks";
 
 function Tag({ children }: { children: React.ReactNode }) {
@@ -25,7 +25,9 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
-const UNLOCK_STORE_KEY = "scib_case01_unlocked_evidence_v1";
+type ProgressState = {
+  unlockedEvidence?: string[];
+};
 
 function normalizeCode(raw: string) {
   return (raw || "")
@@ -35,44 +37,6 @@ function normalizeCode(raw: string) {
     .replace(/[^A-Z0-9\/\-\+\s']/g, "")
     .replace(/\s+/g, " ")
     .trim();
-}
-
-function readUnlocked(): string[] {
-  try {
-    const raw = localStorage.getItem(UNLOCK_STORE_KEY);
-    if (!raw) return ["E-01", "E-02"];
-    const parsed = JSON.parse(raw);
-    if (Array.isArray(parsed) && parsed.every((x) => typeof x === "string")) {
-      const base = new Set(["E-01", "E-02", ...parsed.map((s) => s.toUpperCase())]);
-      return Array.from(base);
-    }
-    return ["E-01", "E-02"];
-  } catch {
-    return ["E-01", "E-02"];
-  }
-}
-
-function writeUnlocked(ids: string[]) {
-  const base = new Set(["E-01", "E-02", ...ids.map((s) => s.toUpperCase())]);
-  localStorage.setItem(UNLOCK_STORE_KEY, JSON.stringify(Array.from(base)));
-}
-
-function applyEvidenceUnlock(codeRaw: string): { ok: boolean; unlocked: string[]; message: string } {
-  const code = normalizeCode(codeRaw);
-  if (!code) return { ok: false, unlocked: [], message: "Enter a solution." };
-
-  const unlocks: string[] = [];
-  if (code === "MKELLS") unlocks.push("E-05", "E-06");
-  if (code === "WHX/OPS 1991-022-03" || code === "WHX/OPS+1991-022-03") unlocks.push("E-03");
-  if (code === "DON'T TRUST THE SWITCHBOARD" || code === "DONT TRUST THE SWITCHBOARD") unlocks.push("E-04");
-
-  if (unlocks.length === 0) return { ok: false, unlocked: [], message: "That is not correct." };
-
-  const current = readUnlocked();
-  const next = Array.from(new Set([...current, ...unlocks]));
-  writeUnlocked(next);
-
-  return { ok: true, unlocked: unlocks, message: `Unlocked: ${unlocks.join(", ")}` };
 }
 
 function LockedClue({ id }: { id: string }) {
@@ -96,22 +60,107 @@ export default function Page() {
   const [unlockMsg, setUnlockMsg] = useState<string | null>(null);
   const [unlocked, setUnlocked] = useState<string[]>(["E-01", "E-02"]);
 
-  useEffect(() => {
-    setUnlocked(readUnlocked());
-    function onStorage(e: StorageEvent) {
-      if (e.key === UNLOCK_STORE_KEY) setUnlocked(readUnlocked());
+  const esRef = useRef<EventSource | null>(null);
+
+  async function loadProgressSnapshot() {
+    try {
+      const res = await fetch("/api/room/case01/progress", { cache: "no-store" });
+      const data = await res.json().catch(() => null);
+      if (!res.ok || !data?.ok || !data?.state) return;
+
+      const state = data.state as ProgressState;
+      const next = new Set<string>(["E-01", "E-02"]);
+      for (const id of Array.isArray(state.unlockedEvidence) ? state.unlockedEvidence : []) {
+        next.add(String(id).toUpperCase());
+      }
+      setUnlocked(Array.from(next));
+    } catch {
+      // ignore
     }
-    window.addEventListener("storage", onStorage);
-    return () => window.removeEventListener("storage", onStorage);
+  }
+
+  useEffect(() => {
+    loadProgressSnapshot();
+
+    try {
+      const es = new EventSource("/api/room/case01/stream");
+      esRef.current = es;
+
+      es.addEventListener("progress", (evt) => {
+        try {
+          const payload = JSON.parse((evt as MessageEvent).data) as { state?: ProgressState };
+          const state = payload?.state || null;
+          const next = new Set<string>(["E-01", "E-02"]);
+          for (const id of Array.isArray(state?.unlockedEvidence) ? state!.unlockedEvidence! : []) {
+            next.add(String(id).toUpperCase());
+          }
+          setUnlocked(Array.from(next));
+        } catch {}
+      });
+
+      es.addEventListener("error", () => {
+        window.setTimeout(() => {
+          loadProgressSnapshot();
+        }, 800);
+      });
+    } catch {
+      // ignore
+    }
+
+    return () => {
+      try {
+        esRef.current?.close();
+      } catch {}
+      esRef.current = null;
+    };
   }, []);
 
-  function submitUnlock() {
-    const res = applyEvidenceUnlock(unlockCode);
-    setUnlockMsg(res.message);
-    if (res.ok) {
-      setUnlocked(readUnlocked());
-      setUnlockCode("");
+  async function submitUnlock() {
+    const code = normalizeCode(unlockCode);
+    if (!code) {
+      setUnlockMsg("Enter a solution.");
+      return;
     }
+
+    const candidates = [
+      { evidenceId: "E-03", code },
+      { evidenceId: "E-04", code },
+      { evidenceId: "E-05", code },
+      { evidenceId: "E-06", code },
+    ];
+
+    let unlockedIds: string[] = [];
+
+    for (const candidate of candidates) {
+      try {
+        const res = await fetch("/api/room/case01/progress", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            action: "unlock_evidence",
+            evidenceId: candidate.evidenceId,
+            code: candidate.code,
+          }),
+        });
+
+        const data = await res.json().catch(() => null);
+
+        if (res.ok && data?.ok) {
+          unlockedIds.push(candidate.evidenceId);
+        }
+      } catch {
+        // ignore per candidate
+      }
+    }
+
+    if (unlockedIds.length === 0) {
+      setUnlockMsg("That is not correct.");
+      return;
+    }
+
+    setUnlockMsg(`Unlocked: ${unlockedIds.join(", ")}`);
+    setUnlockCode("");
+    await loadProgressSnapshot();
   }
 
   const rows = useMemo(
@@ -223,7 +272,7 @@ export default function Page() {
 
           <Panel title="Unlock Shortcut (mirrors Investigation Room)">
             <div className="text-sm text-slate-200">
-              Solve the clue and submit the solution. This unlocks the next material on this device.
+              Solve the clue and submit the solution. This unlocks the next material for the current shared investigation instance.
             </div>
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 pt-2">
               <input
@@ -276,29 +325,21 @@ export default function Page() {
                       return (
                         <tr key={r.id} className="align-top">
                           <td className="px-5 py-4 font-mono">
-                            {isUnlocked ? (
-                              <Link
-                                className="underline underline-offset-4 decoration-slate-600 hover:decoration-slate-300 hover:text-white"
-                                href={r.href}
-                              >
-                                {r.id}
-                              </Link>
-                            ) : (
-                              <span className="text-slate-300">{r.id}</span>
-                            )}
+                            <Link
+                              className="underline underline-offset-4 decoration-slate-600 hover:decoration-slate-300 hover:text-white"
+                              href={r.href}
+                            >
+                              {r.id}
+                            </Link>
                           </td>
 
                           <td className="px-5 py-4">
-                            {isUnlocked ? (
-                              <Link
-                                className="underline underline-offset-4 decoration-slate-600 hover:decoration-slate-300 hover:text-white"
-                                href={r.href}
-                              >
-                                {r.label}
-                              </Link>
-                            ) : (
-                              <span className="text-slate-400">SEALED REGISTER ENTRY</span>
-                            )}
+                            <Link
+                              className="underline underline-offset-4 decoration-slate-600 hover:decoration-slate-300 hover:text-white"
+                              href={r.href}
+                            >
+                              {isUnlocked ? r.label : "SEALED REGISTER ENTRY"}
+                            </Link>
                             {!isUnlocked ? <LockedClue id={r.id} /> : null}
                           </td>
 
