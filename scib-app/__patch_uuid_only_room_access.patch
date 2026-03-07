@@ -1,0 +1,102 @@
+﻿diff --git a/scib-app/src/app/investigation-room/page.tsx b/scib-app/src/app/investigation-room/page.tsx
+--- a/scib-app/src/app/investigation-room/page.tsx
++++ b/scib-app/src/app/investigation-room/page.tsx
+@@ -1,36 +1,50 @@
+ import { cookies } from "next/headers";
+ import { redirect } from "next/navigation";
+ import RoomClient from "./RoomClient";
+ 
+ export const dynamic = "force-dynamic";
+ 
+-function cleanInstanceId(value?: string) {
+-  const s = (value || "").trim();
+-  const cleaned = s.replace(/[^a-zA-Z0-9_-]/g, "");
+-  return cleaned || "DEFAULT";
+-}
++function isUuidLike(value?: string) {
++  if (!value) return false;
++  const s = value.trim();
++  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
++    s
++  );
++}
+ 
+ export default function InvestigationRoomPage() {
+   const jar = cookies();
+ 
+   const name = jar.get("scib_name_v1")?.value;
+-  const badge = jar.get("scib_badge_v1")?.value;
+   const provider = jar.get("scib_provider_v1")?.value || "social";
+-  const shared = jar.get("scib_case01_instance_v1")?.value;
++  const instance = jar.get("scib_case01_instance_v1")?.value;
+ 
+   if (!name) {
+     redirect("/login");
+   }
+ 
+-  const instanceId = cleanInstanceId(shared || badge || "DEFAULT");
++  // UUID-only instance: no badge/default fallback; invalid/missing instance cookie => /login
++  if (!isUuidLike(instance)) {
++    redirect("/login");
++  }
+ 
+   return (
+     <RoomClient
+       initialName={name}
+       provider={provider}
+-      initialInstanceId={instanceId}
++      initialInstanceId={instance!}
+     />
+   );
+ }
+diff --git a/scib-app/src/app/investigation-room/RoomClient.tsx b/scib-app/src/app/investigation-room/RoomClient.tsx
+--- a/scib-app/src/app/investigation-room/RoomClient.tsx
++++ b/scib-app/src/app/investigation-room/RoomClient.tsx
+@@ -1,8 +1,8 @@
+ "use client";
+ 
+ import Link from "next/link";
+ import { useEffect, useMemo, useState } from "react";
+ 
+ type Props = {
+   initialName: string;
+   provider: string;
+   initialInstanceId: string;
+ };
+ 
+-function cleanInstanceId(value?: string) {
+-  const s = (value || "").trim();
+-  const cleaned = s.replace(/[^a-zA-Z0-9_-]/g, "");
+-  return cleaned || "DEFAULT";
+-}
++function isUuidLike(value?: string) {
++  if (!value) return false;
++  const s = value.trim();
++  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
++    s
++  );
++}
+ 
+ export default function RoomClient({ initialName, provider, initialInstanceId }: Props) {
+-  const [instanceId, setInstanceId] = useState(() => cleanInstanceId(initialInstanceId || "DEFAULT"));
++  const [instanceId] = useState(() => initialInstanceId.trim());
++
++  // Safety: if anything ever bypasses server gate, bounce to /login (should not happen after patch)
++  useEffect(() => {
++    if (!isUuidLike(instanceId)) {
++      window.location.assign("/login");
++    }
++  }, [instanceId]);
+ 
+   const joinPath = useMemo(() => {
+     const code = encodeURIComponent(instanceId);
+     return `/cases/silent-switchboard/join?code=${code}`;
+   }, [instanceId]);
+@@ -120,7 +130,7 @@ export default function RoomClient({ initialName, provider, initialInstanceId }: Props) {
+       {/* Share / join link */}
+       <div className="mt-3 flex items-center gap-2">
+-        <Link href={joinPath} className="text-sm underline">
++        <Link href={joinPath} prefetch={false} className="text-sm underline">
+           Open join link
+         </Link>
+       </div>

@@ -1,6 +1,9 @@
-﻿﻿import Image from "next/image";
-import Link from "next/link";
+﻿"use client";
+
+import Image from "next/image";
+import { useEffect, useMemo, useRef, useState } from "react";
 import CaseNavLinks from "@/components/CaseNavLinks";
+import EvidenceTerminal from "@/components/EvidenceTerminal";
 
 function Tag({ children }: { children: React.ReactNode }) {
   return (
@@ -22,10 +25,63 @@ function Panel({ title, children }: { title: string; children: React.ReactNode }
   );
 }
 
-const PDF_SRC = "/evidence/SCIB-CC-1991-022/E-02/E-02_Evidence_Sheet.pdf";
+type ProgressState = {
+  unlockedEvidence?: string[];
+};
+
+function hasUnlocked(state: ProgressState | null, id: string) {
+  const set = new Set((state?.unlockedEvidence || []).map((x) => String(x).toUpperCase()));
+  return set.has(id.toUpperCase());
+}
+
 const PHOTO_SRC = "/evidence/SCIB-CC-1991-022/E-02/coffee-cup.png";
 
 export default function Page() {
+  const [ok, setOk] = useState(false);
+  const esRef = useRef<EventSource | null>(null);
+
+  useEffect(() => {
+    async function loadProgressSnapshot() {
+      try {
+        const res = await fetch("/api/room/case01/progress", { cache: "no-store" });
+        const data = await res.json().catch(() => null);
+        if (!res.ok || !data?.ok || !data?.state) return;
+        setOk(hasUnlocked(data.state as ProgressState, "E-02"));
+      } catch {}
+    }
+
+    loadProgressSnapshot();
+
+    try {
+      const es = new EventSource("/api/room/case01/stream");
+      esRef.current = es;
+
+      es.addEventListener("progress", (evt) => {
+        try {
+          const payload = JSON.parse((evt as MessageEvent).data) as { state?: ProgressState };
+          setOk(hasUnlocked(payload?.state || null, "E-02"));
+        } catch {}
+      });
+
+      es.addEventListener("error", () => {
+        window.setTimeout(() => {
+          loadProgressSnapshot();
+        }, 800);
+      });
+    } catch {}
+
+    return () => {
+      try {
+        esRef.current?.close();
+      } catch {}
+      esRef.current = null;
+    };
+  }, []);
+
+  const clueText = useMemo(() => {
+    return "Clue: the evidence implies that someone else was present in the control room. Submit the word that best describes that person.";
+  }, []);
+
   return (
     <main className="min-h-screen bg-slate-950 text-slate-100 p-6">
       <div className="mx-auto w-full max-w-3xl">
@@ -39,50 +95,32 @@ export default function Page() {
             </div>
           </div>
 
-          <CaseNavLinks caseHref="/cases/silent-switchboard" contextHref="/cases/silent-switchboard/case-file/evidence-list" contextLabel="Back to Evidence List" />
+          <CaseNavLinks
+            caseHref="/cases/silent-switchboard"
+            contextHref="/cases/silent-switchboard/case-file/evidence-list"
+            contextLabel="Back to Evidence List"
+          />
         </header>
 
-        <section className="space-y-4">
+        <section className="space-y-6">
+          <EvidenceTerminal
+            sourceEvidenceId="E-02"
+            unlockEvidenceId="E-02"
+            acceptedTokens={["VISITOR"]}
+            clueText={clueText}
+            hintText="The code refers to what the cup proves about the scene."
+            channelLabel="LAB"
+          />
+
           <div className="rounded-2xl border border-slate-800 bg-slate-900/30 p-6 space-y-2">
             <div className="text-xs text-slate-400">REGISTER ENTRY</div>
             <div className="text-sm text-slate-200">
               Ref: <span className="font-mono">E-02</span> • Collected: <span className="font-mono">03/05/91 04:28</span>
             </div>
             <div className="text-sm text-slate-200">
-              Item: Coffee cup. Rim exhibits cosmetic transfer consistent with lipstick. No matching statement recorded in initial interviews.
+              Item: Coffee cup. Rim exhibits cosmetic transfer consistent with lipstick.
             </div>
           </div>
-
-          <Panel title="Evidence Sheet (PDF)">
-            <div className="flex items-center justify-between gap-3">
-              <div className="text-xs text-slate-400">If the embedded viewer fails, open the file directly.</div>
-              <a
-                href={PDF_SRC}
-                target="_blank"
-                rel="noreferrer"
-                className="text-sm text-slate-300 hover:text-white underline underline-offset-4 decoration-slate-600 hover:decoration-slate-300"
-              >
-                Open PDF
-              </a>
-            </div>
-
-            <div className="mt-3 rounded-xl border border-slate-800 bg-slate-950/30 overflow-hidden">
-              <object data={PDF_SRC} type="application/pdf" className="w-full h-[70vh]">
-                <div className="p-4 text-sm text-slate-200">
-                  PDF preview unavailable in this browser.{" "}
-                  <a
-                    href={PDF_SRC}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="underline underline-offset-4 decoration-slate-600 hover:decoration-slate-300"
-                  >
-                    Open PDF
-                  </a>
-                  .
-                </div>
-              </object>
-            </div>
-          </Panel>
 
           <Panel title="Evidence Photo">
             <div className="rounded-xl border border-slate-800 bg-slate-950/30 overflow-hidden">
@@ -96,15 +134,51 @@ export default function Page() {
                 unoptimized
               />
             </div>
-            <div className="text-xs text-slate-500">Exhibit photo: bagged coffee cup. Lipstick transfer visible on rim.</div>
+
+            <div className="text-xs text-slate-500">
+              Exhibit photo: bagged coffee cup recovered from the Main Control Room.
+              Lipstick transfer visible on rim.
+            </div>
           </Panel>
 
-          <div className="flex flex-col sm:flex-row gap-3 pt-2">
-            <CaseNavLinks caseHref="/cases/silent-switchboard" contextHref="/cases/silent-switchboard/case-file/evidence-list" contextLabel="Back to Evidence List" />
-          </div>
+          <Panel title="Sealed Addendum (reveals after unlock)">
+            {!ok ? (
+              <div className="rounded-xl border border-slate-800 bg-slate-950/30 p-4">
+                <div className="text-xs text-slate-400">SEALED</div>
+                <div className="mt-1 text-sm text-slate-200">
+                  The addendum is encrypted in the register. Use the terminal above to unlock access.
+                </div>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <div className="rounded-xl border border-emerald-900/50 bg-emerald-950/15 p-4">
+                  <div className="text-xs text-emerald-200">ADDENDUM • LABORATORY REVIEW</div>
+                  <div className="mt-2 text-sm text-slate-100 leading-relaxed">
+                    Trace cosmetic residue recovered from the rim of the cup.
+                    <div className="mt-2 text-sm text-slate-200">
+                      Initial field report identified the transfer as lipstick. Laboratory analysis confirms cosmetic wax compounds
+                      consistent with lipstick pigment.
+                    </div>
+                    <div className="mt-2 text-sm text-slate-200">
+                      No female staff were scheduled inside West Harrow Exchange during the <span className="font-mono">23:00–05:00</span> maintenance window.
+                    </div>
+                    <div className="mt-2 text-sm text-slate-200">
+                      No visitor log entries were recorded for that period.
+                    </div>
+                    <div className="mt-4 text-xs text-emerald-200">INVESTIGATIVE NOTE</div>
+                    <div className="mt-2 text-sm text-slate-200">
+                      The presence of the cup indicates that a second individual was present in the control room during Kells' shift.
+                    </div>
+                    <div className="mt-2 text-sm text-slate-200">
+                      Investigators should review witness statements for any references to unexpected visitors or late-night access requests.
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
+          </Panel>
         </section>
       </div>
     </main>
   );
 }
-

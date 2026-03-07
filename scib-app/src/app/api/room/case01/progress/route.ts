@@ -1,4 +1,4 @@
-import { NextResponse } from "next/server";
+﻿import { NextResponse } from "next/server";
 import { cookies } from "next/headers";
 import path from "path";
 import { promises as fs } from "fs";
@@ -38,7 +38,7 @@ function normalizeCode(raw: any) {
   return String(raw || "")
     .trim()
     .toUpperCase()
-    .replace(/[’]/g, "'")
+    .replace(/[â€™]/g, "'")
     .replace(/[^A-Z0-9\/\-\+\s']/g, "")
     .replace(/\s+/g, " ")
     .trim();
@@ -64,7 +64,9 @@ async function readProgress(instanceId: string): Promise<ProgressState> {
       caseId: parsed.caseId || "SCIB-CC-1991-022",
       instanceId,
       updatedAt: typeof parsed.updatedAt === "number" ? parsed.updatedAt : Date.now(),
-      unlockedEvidence: Array.isArray(parsed.unlockedEvidence) ? parsed.unlockedEvidence.map((x) => String(x).toUpperCase()) : [],
+      unlockedEvidence: Array.isArray(parsed.unlockedEvidence)
+        ? parsed.unlockedEvidence.map((x) => String(x).toUpperCase())
+        : [],
       solved: !!parsed.solved,
       activity: Array.isArray(parsed.activity) ? parsed.activity : [],
     };
@@ -92,20 +94,31 @@ async function writeProgress(instanceId: string, state: ProgressState) {
 
 function applyUnlockMapping(evidenceId: string, codeNormalized: string): boolean {
   // IMPORTANT: Keep mapping server-side only (do not leak answers in UI hints)
-  if (evidenceId === "E-03") {
-    return codeNormalized === "WHX/OPS 1991-022-03" || codeNormalized === "WHX/OPS+1991-022-03";
+
+  if (evidenceId === "E-02") {
+    return codeNormalized === "VISITOR";
   }
+
+  if (evidenceId === "E-03") {
+    return (
+      codeNormalized === "MKELLS" ||
+      codeNormalized === "WHX/OPS 1991-022-03" ||
+      codeNormalized === "WHX/OPS+1991-022-03"
+    );
+  }
+
   if (evidenceId === "E-04") {
     return codeNormalized === "DON'T TRUST THE SWITCHBOARD" || codeNormalized === "DONT TRUST THE SWITCHBOARD";
   }
+
   if (evidenceId === "E-05" || evidenceId === "E-06") {
     return codeNormalized === "MKELLS";
   }
+
   return false;
 }
 
 function mergeLocalStorageUnlocks(state: ProgressState, localUnlocked: any) {
-  // Migration-only: accept unlockedEvidence array sent by older clients (localStorage)
   if (!Array.isArray(localUnlocked)) return state;
 
   const incoming = localUnlocked
@@ -129,8 +142,6 @@ export async function GET(req: Request) {
   const queryInstance = url.searchParams.get("instance");
   const sharedInstance = jar.get("scib_case01_instance_v1")?.value;
 
-  // IMPORTANT:
-  // No badge fallback. No DEFAULT fallback.
   const instanceId = cleanInstanceIdOrNull(queryInstance || sharedInstance);
 
   if (!instanceId) {
@@ -158,8 +169,6 @@ export async function POST(req: Request) {
   const queryInstance = url.searchParams.get("instance");
   const sharedInstance = jar.get("scib_case01_instance_v1")?.value;
 
-  // IMPORTANT:
-  // No badge fallback. No DEFAULT fallback.
   const instanceId = cleanInstanceIdOrNull(queryInstance || sharedInstance);
 
   if (!instanceId) {
@@ -175,7 +184,6 @@ export async function POST(req: Request) {
   const name = (jar.get("scib_name_v1")?.value || "").trim().slice(0, 24);
   const badge = (jar.get("scib_badge_v1")?.value || "").trim().slice(0, 24);
 
-  // For mutations, require identity (prevents anonymous spam on shared room state)
   if (!isNonEmpty(name) || !isNonEmpty(badge)) {
     return NextResponse.json({ ok: false, error: "Unauthorized" }, { status: 401 });
   }
@@ -189,13 +197,11 @@ export async function POST(req: Request) {
 
   const action = String(body?.action || "").trim();
 
-  // Migration-only: merge legacy localStorage unlock list
   if (action === "merge_local_unlocked") {
     const state = await readProgress(instanceId);
     const merged = mergeLocalStorageUnlocks(state, body?.unlockedEvidence);
     await writeProgress(instanceId, merged);
 
-    // Broadcast snapshot
     const bus = getRoomBus(instanceId);
     bus.emit({ type: "progress", payload: { state: merged } });
 
@@ -204,14 +210,14 @@ export async function POST(req: Request) {
 
   if (action === "unlock_evidence") {
     const evidenceId = normalizeEvidenceId(body?.evidenceId);
-    if (!evidenceId) return NextResponse.json({ ok: false, error: "Missing evidenceId" }, { status: 400 });
+    if (!evidenceId) {
+      return NextResponse.json({ ok: false, error: "Missing evidenceId" }, { status: 400 });
+    }
 
     const codeNormalized = normalizeCode(body?.code);
-
     const state = await readProgress(instanceId);
     const already = new Set((state.unlockedEvidence || []).map((x) => String(x).toUpperCase()));
 
-    // Accept idempotent unlock (still return ok)
     if (!already.has(evidenceId)) {
       const valid = applyUnlockMapping(evidenceId, codeNormalized);
       if (!valid) {
@@ -231,7 +237,6 @@ export async function POST(req: Request) {
 
       await writeProgress(instanceId, state);
 
-      // Broadcast snapshot
       const bus = getRoomBus(instanceId);
       bus.emit({ type: "progress", payload: { state } });
     }
